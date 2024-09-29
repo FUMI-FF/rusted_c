@@ -1,0 +1,8 @@
+[tasks.test]
+command = "./test.sh"
+description = "test"
+dependencies = ["build"]
+
+[tasks.build]
+command = "cargo"
+args = ["build"]
