@@ -1,3 +1,5 @@
+use std::ops::BitAnd;
+
 // parser implementation
 pub type ParseResult<'a, O> = Result<(&'a str, O), &'a str>;
 pub type ParseFn<'a, O> = dyn Fn(&'a str) -> ParseResult<'a, O> + 'a;
@@ -54,6 +56,21 @@ impl<'a, O: 'a> Parser<'a, O> {
     }
 }
 
+impl<'a, A: 'a, B: 'a> BitAnd<Parser<'a, B>> for Parser<'a, A> {
+    type Output = Parser<'a, (A, B)>;
+
+    // pair: A & B
+    fn bitand(self, rhs: Parser<'a, B>) -> Parser<(A, B)> {
+        Parser::new(move |input: &str| match self.parse(input) {
+            Ok((next, ret1)) => match rhs.parse(next) {
+                Ok((_final, ret2)) => Ok((_final, (ret1, ret2))),
+                Err(err) => Err(err),
+            },
+            Err(err) => Err(err),
+        })
+    }
+}
+
 pub fn symbol<'a>(expected: char) -> Parser<'a, char> {
     Parser::new(move |input: &str| match input.chars().next() {
         Some(ch) if ch == expected => Ok((&input[ch.len_utf8()..], ch)),
@@ -94,4 +111,12 @@ fn test_repeat1() {
     let repeat0_parser = one_of("0123456789").repeat1();
     assert_eq!(repeat0_parser.parse("123x"), Ok(("x", vec!['1', '2', '3'])));
     assert_eq!(repeat0_parser.parse("xxx"), Err("xxx"));
+}
+
+#[test]
+fn test_pair() {
+    let p1 = symbol('1');
+    let p2 = symbol('x');
+    let paired = p1 & p2;
+    assert_eq!(paired.parse("1xy"), Ok(("y", ('1', 'x'))));
 }
