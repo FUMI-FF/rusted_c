@@ -1,4 +1,4 @@
-use std::ops::BitAnd;
+use std::ops::{BitAnd, BitOr};
 
 // parser implementation
 pub type ParseResult<'a, O> = Result<(&'a str, O), &'a str>;
@@ -71,6 +71,18 @@ impl<'a, A: 'a, B: 'a> BitAnd<Parser<'a, B>> for Parser<'a, A> {
     }
 }
 
+impl<'a, A: 'a> BitOr<Parser<'a, A>> for Parser<'a, A> {
+    type Output = Parser<'a, A>;
+
+    // either: A | B
+    fn bitor(self, rhs: Parser<'a, A>) -> Parser<'a, A> {
+        Parser::new(move |input: &str| match self.parse(input) {
+            Ok((next, ret)) => Ok((next, ret)),
+            Err(_) => rhs.parse(input),
+        })
+    }
+}
+
 pub fn symbol<'a>(expected: char) -> Parser<'a, char> {
     Parser::new(move |input: &str| match input.chars().next() {
         Some(ch) if ch == expected => Ok((&input[ch.len_utf8()..], ch)),
@@ -119,4 +131,14 @@ fn test_pair() {
     let p2 = symbol('x');
     let paired = p1 & p2;
     assert_eq!(paired.parse("1xy"), Ok(("y", ('1', 'x'))));
+}
+
+#[test]
+fn test_either() {
+    let p1 = symbol('x');
+    let p2 = symbol('y');
+    let either = p1 | p2;
+    assert_eq!(either.parse("x1"), Ok(("1", 'x')));
+    assert_eq!(either.parse("y1"), Ok(("1", 'y')));
+    assert_eq!(either.parse("10"), Err("10"));
 }
