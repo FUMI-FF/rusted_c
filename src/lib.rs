@@ -54,6 +54,14 @@ impl<'a, O: 'a> Parser<'a, O> {
             Ok((cur, vec))
         })
     }
+
+    pub fn map<U, F>(self, f: F) -> Parser<'a, U>
+    where
+        F: Fn(O) -> U + 'a,
+        U: 'a,
+    {
+        Parser::new(move |input: &str| self.parse(input).map(|(next, ret)| (next, f(ret))))
+    }
 }
 
 impl<'a, A: 'a, B: 'a> BitAnd<Parser<'a, B>> for Parser<'a, A> {
@@ -95,6 +103,14 @@ pub fn one_of<'a>(set: &'static str) -> Parser<'a, char> {
         Some(ch) if set.contains(ch) => Ok((&input[ch.len_utf8()..], ch)),
         _ => Err(input),
     })
+}
+
+pub fn digit<'a>() -> Parser<'a, i32> {
+    (one_of("123456789") & one_of("0123456789").repeat0()).map(|(fst, mut rest)| {
+        rest.insert(0, fst);
+        let s: String = rest.into_iter().collect();
+        s.parse::<i32>().unwrap()
+    }) | symbol('0').map(|_| 0)
 }
 
 #[test]
@@ -141,4 +157,14 @@ fn test_either() {
     assert_eq!(either.parse("x1"), Ok(("1", 'x')));
     assert_eq!(either.parse("y1"), Ok(("1", 'y')));
     assert_eq!(either.parse("10"), Err("10"));
+}
+
+#[test]
+fn test_digit() {
+    let digit = digit();
+    assert_eq!(digit.parse("0x"), Ok(("x", 0)));
+    assert_eq!(digit.parse("1x"), Ok(("x", 1)));
+    assert_eq!(digit.parse("23x"), Ok(("x", 23)));
+    assert_eq!(digit.parse("459x"), Ok(("x", 459)));
+    assert_eq!(digit.parse("xxx"), Err("xxx"));
 }
