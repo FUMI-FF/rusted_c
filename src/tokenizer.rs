@@ -1,18 +1,21 @@
-use crate::parser::{digit, one_of, Parser};
+use crate::parser::{digit, one_of, whitespaces, Parser};
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq)]
 pub enum Token {
     Int(i32),
     Symbol(char),
 }
 
-fn digit_t<'a>() -> Parser<'a, Token> {
-    digit().map(Token::Int)
+fn digit_token<'a>() -> Parser<'a, Token> {
+    (whitespaces() & digit()).snd().map(Token::Int)
+}
+
+fn operator_token<'a>() -> Parser<'a, Token> {
+    (whitespaces() & one_of("+-")).snd().map(Token::Symbol)
 }
 
 pub fn tokenizer<'a>() -> Parser<'a, Vec<Token>> {
-    let operator: Parser<Token> = one_of("+-").map(Token::Symbol);
-    let parser = digit_t() & (operator & digit_t()).repeat0();
+    let parser = digit_token() & (operator_token() & digit_token()).repeat0();
     parser.map(|(num, rest)| {
         std::iter::once(num)
             .chain(rest.into_iter().flat_map(|(op, dig)| vec![op, dig]))

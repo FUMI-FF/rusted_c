@@ -62,6 +62,26 @@ impl<'a, O: 'a> Parser<'a, O> {
     {
         Parser::new(move |input: &str| self.parse(input).map(|(next, ret)| (next, f(ret))))
     }
+
+    pub fn is_a<F>(self, pred: F) -> Parser<'a, O>
+    where
+        F: Fn(&O) -> bool + 'a,
+    {
+        Parser::new(move |input| match self.parse(input) {
+            Ok((next, ret)) if pred(&ret) => Ok((next, ret)),
+            _ => Err(input),
+        })
+    }
+}
+
+impl<'a, A: 'a, B: 'a> Parser<'a, (A, B)> {
+    pub fn fst(self) -> Parser<'a, A> {
+        self.map(|ret| ret.0)
+    }
+
+    pub fn snd(self) -> Parser<'a, B> {
+        self.map(|ret| ret.1)
+    }
 }
 
 impl<'a, A: 'a, B: 'a> BitAnd<Parser<'a, B>> for Parser<'a, A> {
@@ -111,6 +131,17 @@ pub fn digit<'a>() -> Parser<'a, i32> {
         let s: String = rest.into_iter().collect();
         s.parse::<i32>().unwrap()
     }) | symbol('0').map(|_| 0)
+}
+
+pub fn any_char<'a>() -> Parser<'a, char> {
+    Parser::new(move |input: &str| match input.chars().next() {
+        Some(ch) => Ok((&input[ch.len_utf8()..], ch)),
+        _ => Err(input),
+    })
+}
+
+pub fn whitespaces<'a>() -> Parser<'a, Vec<char>> {
+    any_char().is_a(|ch| ch.is_whitespace()).repeat0()
 }
 
 #[test]
@@ -167,4 +198,14 @@ fn test_digit() {
     assert_eq!(digit.parse("23x"), Ok(("x", 23)));
     assert_eq!(digit.parse("459x"), Ok(("x", 459)));
     assert_eq!(digit.parse("xxx"), Err("xxx"));
+}
+
+#[test]
+fn test_whitespaces() {
+    let whitespaces = whitespaces();
+    assert_eq!(whitespaces.parse(" x"), Ok(("x", vec![' '])));
+    assert_eq!(
+        whitespaces.parse(" \t\nx"),
+        Ok(("x", vec![' ', '\t', '\n']))
+    );
 }

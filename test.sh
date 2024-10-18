@@ -21,5 +21,6 @@ assert 42 "42"
 assert 2 "1+1"
 assert 5 "10-5"
 assert 15 "1+2+3+4+5"
+assert 2 " 1 + 1 "
 
 echo "PASSED!!"
