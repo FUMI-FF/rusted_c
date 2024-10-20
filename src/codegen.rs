@@ -75,7 +75,7 @@ impl<'a> VirtualRegister<'a> {
 static REGISTORS: [&str; 8] = ["rdi", "rsi", "r10", "r11", "r12", "r13", "r14", "r15"];
 static mut INDEX: usize = 0;
 
-pub fn generate<'a>(node: Node) -> &'a str {
+pub fn generate<'a>(node: &Node) -> &'a str {
     if let Node::Number(val) = node {
         unsafe {
             if INDEX > 8 {
@@ -89,8 +89,8 @@ pub fn generate<'a>(node: Node) -> &'a str {
     };
 
     if let Node::Binary { op, lhs, rhs } = node {
-        let dst = generate(*lhs);
-        let src = generate(*rhs);
+        let dst = generate(lhs);
+        let src = generate(rhs);
 
         if op == "+" {
             println!("  add {}, {}", dst, src);

@@ -1,29 +1,31 @@
 use std::ops::{BitAnd, BitOr};
 
 // parser implementation
-pub type ParseResult<'a, O> = Result<(&'a str, O), &'a str>;
-pub type ParseFn<'a, O> = dyn Fn(&'a str) -> ParseResult<'a, O> + 'a;
+#[derive(Debug, PartialEq)]
+pub struct ParseError;
+pub type ParseResult<'a, I, O> = Result<(&'a [I], O), ParseError>;
+pub type ParseFn<'a, I, O> = dyn Fn(&'a [I]) -> ParseResult<'a, I, O> + 'a;
 
-pub struct Parser<'a, O> {
-    parser: Box<ParseFn<'a, O>>,
+pub struct Parser<'a, I, O> {
+    parser: Box<ParseFn<'a, I, O>>,
 }
 
-impl<'a, O: 'a> Parser<'a, O> {
+impl<'a, I, O: 'a> Parser<'a, I, O> {
     pub fn new<P>(parser: P) -> Self
     where
-        P: Fn(&'a str) -> Result<(&'a str, O), &str> + 'a,
+        P: Fn(&'a [I]) -> Result<(&'a [I], O), ParseError> + 'a,
     {
         Self {
             parser: Box::new(parser),
         }
     }
 
-    pub fn parse(&self, input: &'a str) -> ParseResult<'a, O> {
+    pub fn parse(&self, input: &'a [I]) -> ParseResult<'a, I, O> {
         (self.parser)(input)
     }
 
-    pub fn repeat0(self) -> Parser<'a, Vec<O>> {
-        Parser::new(move |input: &'a str| {
+    pub fn repeat0(self) -> Parser<'a, I, Vec<O>> {
+        Parser::new(move |input: &'a [I]| {
             let mut vec: Vec<O> = vec![];
             let mut cur = input;
             while let Ok((next, ret)) = self.parse(cur) {
@@ -34,8 +36,8 @@ impl<'a, O: 'a> Parser<'a, O> {
         })
     }
 
-    pub fn repeat1(self) -> Parser<'a, Vec<O>> {
-        Parser::new(move |input: &'a str| {
+    pub fn repeat1(self) -> Parser<'a, I, Vec<O>> {
+        Parser::new(move |input: &'a [I]| {
             let mut vec: Vec<O> = vec![];
             let mut cur = input;
 
@@ -55,41 +57,31 @@ impl<'a, O: 'a> Parser<'a, O> {
         })
     }
 
-    pub fn map<U, F>(self, f: F) -> Parser<'a, U>
+    pub fn map<U, F>(self, f: F) -> Parser<'a, I, U>
     where
         F: Fn(O) -> U + 'a,
         U: 'a,
     {
-        Parser::new(move |input: &str| self.parse(input).map(|(next, ret)| (next, f(ret))))
+        Parser::new(move |input: &[I]| self.parse(input).map(|(next, ret)| (next, f(ret))))
     }
 
-    pub fn is_a<F>(self, pred: F) -> Parser<'a, O>
+    pub fn is_a<F>(self, pred: F) -> Parser<'a, I, O>
     where
         F: Fn(&O) -> bool + 'a,
     {
-        Parser::new(move |input| match self.parse(input) {
+        Parser::new(move |input: &[I]| match self.parse(input) {
             Ok((next, ret)) if pred(&ret) => Ok((next, ret)),
-            _ => Err(input),
+            _ => Err(ParseError),
         })
     }
 }
 
-impl<'a, A: 'a, B: 'a> Parser<'a, (A, B)> {
-    pub fn fst(self) -> Parser<'a, A> {
-        self.map(|ret| ret.0)
-    }
-
-    pub fn snd(self) -> Parser<'a, B> {
-        self.map(|ret| ret.1)
-    }
-}
-
-impl<'a, A: 'a, B: 'a> BitAnd<Parser<'a, B>> for Parser<'a, A> {
-    type Output = Parser<'a, (A, B)>;
+impl<'a, I, A: 'a, B: 'a> BitAnd<Parser<'a, I, B>> for Parser<'a, I, A> {
+    type Output = Parser<'a, I, (A, B)>;
 
     // pair: A & B
-    fn bitand(self, rhs: Parser<'a, B>) -> Parser<(A, B)> {
-        Parser::new(move |input: &str| match self.parse(input) {
+    fn bitand(self, rhs: Parser<'a, I, B>) -> Parser<'a, I, (A, B)> {
+        Parser::new(move |input: &[I]| match self.parse(input) {
             Ok((next, ret1)) => match rhs.parse(next) {
                 Ok((_final, ret2)) => Ok((_final, (ret1, ret2))),
                 Err(err) => Err(err),
@@ -99,113 +91,122 @@ impl<'a, A: 'a, B: 'a> BitAnd<Parser<'a, B>> for Parser<'a, A> {
     }
 }
 
-impl<'a, A: 'a> BitOr<Parser<'a, A>> for Parser<'a, A> {
-    type Output = Parser<'a, A>;
+impl<'a, I, A: 'a> BitOr<Parser<'a, I, A>> for Parser<'a, I, A> {
+    type Output = Parser<'a, I, A>;
 
     // either: A | B
-    fn bitor(self, rhs: Parser<'a, A>) -> Parser<'a, A> {
-        Parser::new(move |input: &str| match self.parse(input) {
+    fn bitor(self, rhs: Parser<'a, I, A>) -> Parser<'a, I, A> {
+        Parser::new(move |input: &[I]| match self.parse(input) {
             Ok((next, ret)) => Ok((next, ret)),
             Err(_) => rhs.parse(input),
         })
     }
 }
 
-pub fn symbol<'a>(expected: char) -> Parser<'a, char> {
-    Parser::new(move |input: &str| match input.chars().next() {
-        Some(ch) if ch == expected => Ok((&input[ch.len_utf8()..], ch)),
-        _ => Err(input),
+pub fn symbol<'a>(expected: u8) -> Parser<'a, u8, u8> {
+    Parser::new(move |input: &[u8]| match input.get(0) {
+        Some(ch) if *ch == expected => Ok((&input[1..], *ch)),
+        _ => Err(ParseError),
     })
 }
 
-pub fn one_of<'a>(set: &'static str) -> Parser<'a, char> {
-    Parser::new(move |input: &str| match input.chars().next() {
-        Some(ch) if set.contains(ch) => Ok((&input[ch.len_utf8()..], ch)),
-        _ => Err(input),
+pub fn one_of<'a>(set: &'a [u8]) -> Parser<'a, u8, u8> {
+    Parser::new(move |input: &[u8]| match input.get(0) {
+        Some(ch) if set.contains(ch) => Ok((&input[1..], *ch)),
+        _ => Err(ParseError),
     })
 }
 
-pub fn digit<'a>() -> Parser<'a, i32> {
-    (one_of("123456789") & one_of("0123456789").repeat0()).map(|(fst, mut rest)| {
+pub fn digit<'a>() -> Parser<'a, u8, i32> {
+    (one_of(b"123456789") & one_of(b"0123456789").repeat0()).map(|(fst, mut rest)| {
         rest.insert(0, fst);
-        let s: String = rest.into_iter().collect();
+        let s = String::from_utf8(rest).expect("must be string");
         s.parse::<i32>().unwrap()
-    }) | symbol('0').map(|_| 0)
+    }) | symbol(b'0').map(|_| 0)
 }
 
-pub fn any_char<'a>() -> Parser<'a, char> {
-    Parser::new(move |input: &str| match input.chars().next() {
-        Some(ch) => Ok((&input[ch.len_utf8()..], ch)),
-        _ => Err(input),
+pub fn any_char<'a>() -> Parser<'a, u8, u8> {
+    Parser::new(move |input: &[u8]| match input.get(0) {
+        Some(ch) => Ok((&input[1..], *ch)),
+        _ => Err(ParseError),
     })
 }
 
-pub fn whitespaces<'a>() -> Parser<'a, Vec<char>> {
-    any_char().is_a(|ch| ch.is_whitespace()).repeat0()
+pub fn whitespaces<'a>() -> Parser<'a, u8, Vec<u8>> {
+    any_char().is_a(|ch| ch.is_ascii_whitespace()).repeat0()
 }
 
 #[test]
 fn test_symbol() {
-    let symbol_parser = symbol('*');
-    assert_eq!(symbol_parser.parse("*10"), Ok(("10", '*')));
-    assert_eq!(symbol_parser.parse("1+1"), Err("1+1"));
+    let symbol_parser = symbol(b'*');
+    assert_eq!(
+        symbol_parser.parse("*10".as_bytes()),
+        Ok(("10".as_bytes(), b'*'))
+    );
+    assert_eq!(symbol_parser.parse(b"1+1"), Err(ParseError));
 }
 
 #[test]
 fn test_one_of() {
-    let one_of_parser = one_of("0123456789");
-    assert_eq!(one_of_parser.parse("10"), Ok(("0", '1')));
-    assert_eq!(one_of_parser.parse("xx"), Err("xx"));
+    let one_of_parser = one_of(b"0123456789");
+    assert_eq!(one_of_parser.parse(b"10"), Ok(("0".as_bytes(), b'1')));
+    assert_eq!(one_of_parser.parse(b"xx"), Err(ParseError));
 }
 
 #[test]
 fn test_repeat0() {
-    let repeat0_parser = one_of("0123456789").repeat0();
-    assert_eq!(repeat0_parser.parse("123x"), Ok(("x", vec!['1', '2', '3'])));
-    assert_eq!(repeat0_parser.parse("xxx"), Ok(("xxx", vec![])));
+    let repeat0_parser = one_of(b"0123456789").repeat0();
+    assert_eq!(
+        repeat0_parser.parse(b"123x"),
+        Ok(("x".as_bytes(), vec![b'1', b'2', b'3']))
+    );
+    assert_eq!(repeat0_parser.parse(b"xxx"), Ok(("xxx".as_bytes(), vec![])));
 }
 
 #[test]
 fn test_repeat1() {
-    let repeat0_parser = one_of("0123456789").repeat1();
-    assert_eq!(repeat0_parser.parse("123x"), Ok(("x", vec!['1', '2', '3'])));
-    assert_eq!(repeat0_parser.parse("xxx"), Err("xxx"));
+    let repeat0_parser = one_of(b"0123456789").repeat1();
+    assert_eq!(
+        repeat0_parser.parse(b"123x"),
+        Ok(("x".as_bytes(), vec![b'1', b'2', b'3']))
+    );
+    assert_eq!(repeat0_parser.parse(b"xxx"), Err(ParseError));
 }
 
 #[test]
 fn test_pair() {
-    let p1 = symbol('1');
-    let p2 = symbol('x');
+    let p1 = symbol(b'1');
+    let p2 = symbol(b'x');
     let paired = p1 & p2;
-    assert_eq!(paired.parse("1xy"), Ok(("y", ('1', 'x'))));
+    assert_eq!(paired.parse(b"1xy"), Ok(("y".as_bytes(), (b'1', b'x'))));
 }
 
 #[test]
 fn test_either() {
-    let p1 = symbol('x');
-    let p2 = symbol('y');
+    let p1 = symbol(b'x');
+    let p2 = symbol(b'y');
     let either = p1 | p2;
-    assert_eq!(either.parse("x1"), Ok(("1", 'x')));
-    assert_eq!(either.parse("y1"), Ok(("1", 'y')));
-    assert_eq!(either.parse("10"), Err("10"));
+    assert_eq!(either.parse(b"x1"), Ok(("1".as_bytes(), b'x')));
+    assert_eq!(either.parse(b"y1"), Ok(("1".as_bytes(), b'y')));
+    assert_eq!(either.parse(b"10"), Err(ParseError));
 }
 
 #[test]
 fn test_digit() {
     let digit = digit();
-    assert_eq!(digit.parse("0x"), Ok(("x", 0)));
-    assert_eq!(digit.parse("1x"), Ok(("x", 1)));
-    assert_eq!(digit.parse("23x"), Ok(("x", 23)));
-    assert_eq!(digit.parse("459x"), Ok(("x", 459)));
-    assert_eq!(digit.parse("xxx"), Err("xxx"));
+    assert_eq!(digit.parse(b"0x"), Ok(("x".as_bytes(), 0)));
+    assert_eq!(digit.parse(b"1x"), Ok(("x".as_bytes(), 1)));
+    assert_eq!(digit.parse(b"23x"), Ok(("x".as_bytes(), 23)));
+    assert_eq!(digit.parse(b"459x"), Ok(("x".as_bytes(), 459)));
+    assert_eq!(digit.parse(b"xxx"), Err(ParseError));
 }
 
 #[test]
 fn test_whitespaces() {
     let whitespaces = whitespaces();
-    assert_eq!(whitespaces.parse(" x"), Ok(("x", vec![' '])));
+    assert_eq!(whitespaces.parse(b" x"), Ok(("x".as_bytes(), vec![b' '])));
     assert_eq!(
-        whitespaces.parse(" \t\nx"),
-        Ok(("x", vec![' ', '\t', '\n']))
+        whitespaces.parse(b" \t\nx"),
+        Ok(("x".as_bytes(), vec![b' ', b'\t', b'\n']))
     );
 }
