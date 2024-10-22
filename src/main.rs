@@ -19,6 +19,5 @@ fn main() {
     println!(".intel_syntax noprefix");
     println!(".global main");
     println!("main:");
-    println!("  mov rax, {}", generate(&node));
-    println!("  ret");
+    generate(&node);
 }

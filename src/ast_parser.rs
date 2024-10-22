@@ -2,7 +2,7 @@ use crate::tokenizer::Token;
 
 #[derive(Debug)]
 pub enum Node {
-    Number(i32),
+    Int(i32),
     Binary {
         op: String,
         lhs: Box<Node>,
@@ -14,7 +14,7 @@ pub type ASTResult<'a> = Result<(&'a [Token], Node), String>;
 
 pub fn number(tokens: &[Token]) -> ASTResult {
     match tokens[0] {
-        Token::Int(val) => Ok((&tokens[1..], Node::Number(val))),
+        Token::Int(val) => Ok((&tokens[1..], Node::Int(val))),
         _ => Err(format!("number expected, but got {:?}", tokens[0])),
     }
 }
