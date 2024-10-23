@@ -1,6 +1,7 @@
 mod ast_parser;
 mod codegen;
 mod parser;
+mod register;
 mod tokenizer;
 
 use ast_parser::expr;
