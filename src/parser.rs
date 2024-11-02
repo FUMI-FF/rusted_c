@@ -2,7 +2,16 @@ use std::ops::{BitAnd, BitOr};
 
 // parser implementation
 #[derive(Debug, PartialEq)]
-pub struct ParseError;
+pub struct ParseError {
+    message: String,
+}
+
+impl ParseError {
+    pub fn new(message: String) -> Self {
+        Self { message }
+    }
+}
+
 pub type ParseResult<'a, I, O> = Result<(&'a [I], O), ParseError>;
 pub type ParseFn<'a, I, O> = dyn Fn(&'a [I]) -> ParseResult<'a, I, O> + 'a;
 
@@ -71,7 +80,9 @@ impl<'a, I, O: 'a> Parser<'a, I, O> {
     {
         Parser::new(move |input: &[I]| match self.parse(input) {
             Ok((next, ret)) if pred(&ret) => Ok((next, ret)),
-            _ => Err(ParseError),
+            _ => Err(ParseError {
+                message: "pred failed".to_string(),
+            }),
         })
     }
 }
@@ -106,14 +117,24 @@ impl<'a, I, A: 'a> BitOr<Parser<'a, I, A>> for Parser<'a, I, A> {
 pub fn symbol<'a>(expected: u8) -> Parser<'a, u8, u8> {
     Parser::new(move |input: &[u8]| match input.get(0) {
         Some(ch) if *ch == expected => Ok((&input[1..], *ch)),
-        _ => Err(ParseError),
+        Some(ch) => Err(ParseError {
+            message: format!("{} is expected, but got {}", expected, ch),
+        }),
+        None => Err(ParseError {
+            message: format!("{} is expected, but got nothing", expected),
+        }),
     })
 }
 
 pub fn one_of<'a>(set: &'a [u8]) -> Parser<'a, u8, u8> {
     Parser::new(move |input: &[u8]| match input.get(0) {
         Some(ch) if set.contains(ch) => Ok((&input[1..], *ch)),
-        _ => Err(ParseError),
+        Some(ch) => Err(ParseError {
+            message: format!("one of {:?} is expected, but got {}", set, ch),
+        }),
+        None => Err(ParseError {
+            message: format!("one of {:?} is expected, but got nothing", set),
+        }),
     })
 }
 
@@ -128,7 +149,9 @@ pub fn digit<'a>() -> Parser<'a, u8, i32> {
 pub fn any_char<'a>() -> Parser<'a, u8, u8> {
     Parser::new(move |input: &[u8]| match input.get(0) {
         Some(ch) => Ok((&input[1..], *ch)),
-        _ => Err(ParseError),
+        None => Err(ParseError {
+            message: "char is expected but got nothing".to_string(),
+        }),
     })
 }
 
@@ -143,14 +166,14 @@ fn test_symbol() {
         symbol_parser.parse("*10".as_bytes()),
         Ok(("10".as_bytes(), b'*'))
     );
-    assert_eq!(symbol_parser.parse(b"1+1"), Err(ParseError));
+    assert_eq!(symbol_parser.parse(b"1+1").is_err(), true);
 }
 
 #[test]
 fn test_one_of() {
     let one_of_parser = one_of(b"0123456789");
     assert_eq!(one_of_parser.parse(b"10"), Ok(("0".as_bytes(), b'1')));
-    assert_eq!(one_of_parser.parse(b"xx"), Err(ParseError));
+    assert_eq!(one_of_parser.parse(b"xx").is_err(), true);
 }
 
 #[test]
@@ -170,7 +193,7 @@ fn test_repeat1() {
         repeat0_parser.parse(b"123x"),
         Ok(("x".as_bytes(), vec![b'1', b'2', b'3']))
     );
-    assert_eq!(repeat0_parser.parse(b"xxx"), Err(ParseError));
+    assert_eq!(repeat0_parser.parse(b"xxx").is_err(), true);
 }
 
 #[test]
@@ -188,7 +211,7 @@ fn test_either() {
     let either = p1 | p2;
     assert_eq!(either.parse(b"x1"), Ok(("1".as_bytes(), b'x')));
     assert_eq!(either.parse(b"y1"), Ok(("1".as_bytes(), b'y')));
-    assert_eq!(either.parse(b"10"), Err(ParseError));
+    assert_eq!(either.parse(b"10").is_err(), true);
 }
 
 #[test]
@@ -198,7 +221,7 @@ fn test_digit() {
     assert_eq!(digit.parse(b"1x"), Ok(("x".as_bytes(), 1)));
     assert_eq!(digit.parse(b"23x"), Ok(("x".as_bytes(), 23)));
     assert_eq!(digit.parse(b"459x"), Ok(("x".as_bytes(), 459)));
-    assert_eq!(digit.parse(b"xxx"), Err(ParseError));
+    assert_eq!(digit.parse(b"xxx").is_err(), true);
 }
 
 #[test]

@@ -15,7 +15,7 @@ fn main() {
     let tokenizer = tokenizer();
     let result = tokenizer.parse(input);
     let tokens = result.expect("failed to tokenize").1;
-    let node = expr(&tokens).expect("failed to build AST").1;
+    let node = expr().parse(&tokens).expect("failed to build AST").1;
 
     println!(".intel_syntax noprefix");
     println!(".global main");

@@ -8,6 +8,7 @@ enum IR {
     MOV { dst: RegNo, src: RegNo },
     ADD { dst: RegNo, src: RegNo },
     SUB { dst: RegNo, src: RegNo },
+    MUL { dst: RegNo, src: RegNo },
     RETURN(RegNo),
     KILL(RegNo),
     NOP,
@@ -52,6 +53,11 @@ fn _generate_ir(
             ir_vec.push(IR::KILL(src));
             return dst;
         }
+        if op == "*" {
+            ir_vec.push(IR::MUL { dst, src });
+            ir_vec.push(IR::KILL(src));
+            return dst;
+        }
     }
 
     panic!("node: {:?} is not supported", node);
@@ -79,6 +85,11 @@ fn allocate_register(ir_vec: Vec<IR>, virtual_register: &mut VirtualRegister) ->
                 let dst: RegIndex = virtual_register.allocate(*dst);
                 let src: RegIndex = virtual_register.allocate(*src);
                 IR::SUB { dst, src }
+            }
+            IR::MUL { dst, src } => {
+                let dst: RegIndex = virtual_register.allocate(*dst);
+                let src: RegIndex = virtual_register.allocate(*src);
+                IR::MUL { dst, src }
             }
             IR::RETURN(reg) => {
                 virtual_register.kill(*reg);
@@ -113,6 +124,13 @@ fn gen_x86(ir_vec: Vec<IR>, virtual_register: &VirtualRegister) {
             let dst = virtual_register.get_register(*dst);
             let src = virtual_register.get_register(*src);
             println!("  sub {}, {}", dst, src);
+        }
+        IR::MUL { dst, src } => {
+            let dst = virtual_register.get_register(*dst);
+            let src = virtual_register.get_register(*src);
+            println!("  mov rax, {}", src);
+            println!("  mul {}", dst);
+            println!("  mov {}, rax", dst);
         }
         IR::RETURN(reg) => {
             let reg = virtual_register.get_register(*reg);

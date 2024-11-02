@@ -3,7 +3,7 @@ use crate::parser::{digit, one_of, whitespaces, Parser};
 #[derive(Debug, PartialEq)]
 pub enum Token {
     Int(i32),
-    Symbol(String),
+    Symbol(u8),
 }
 
 fn digit_token<'a>() -> Parser<'a, u8, Token> {
@@ -11,10 +11,7 @@ fn digit_token<'a>() -> Parser<'a, u8, Token> {
 }
 
 fn operator_token<'a>() -> Parser<'a, u8, Token> {
-    (whitespaces() & one_of(b"+-")).map(|(_, op)| {
-        let converted: String = String::from_utf8(vec![op]).expect("must be utf8 bytes");
-        Token::Symbol(converted)
-    })
+    (whitespaces() & one_of(b"+-*")).map(|(_, op)| Token::Symbol(op))
 }
 
 pub fn tokenizer<'a>() -> Parser<'a, u8, Vec<Token>> {
