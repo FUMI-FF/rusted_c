@@ -11,7 +11,7 @@ fn digit_token<'a>() -> Parser<'a, u8, Token> {
 }
 
 fn operator_token<'a>() -> Parser<'a, u8, Token> {
-    (whitespaces() & one_of(b"+-*")).map(|(_, op)| Token::Symbol(op))
+    (whitespaces() & one_of(b"+-*/")).map(|(_, op)| Token::Symbol(op))
 }
 
 pub fn tokenizer<'a>() -> Parser<'a, u8, Vec<Token>> {

@@ -10,8 +10,6 @@ pub enum Node {
     },
 }
 
-pub type ASTResult<'a> = Result<(&'a [Token], Node), String>;
-
 // expr := mul ((+|-) mul)
 pub fn expr<'a>() -> Parser<'a, Token, Node> {
     (mul() & (operator(b"+-") & mul()).repeat0()).map(|(mut lhs, op_and_nums)| {
