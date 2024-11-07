@@ -18,32 +18,50 @@ enum IR {
 // code generator
 pub fn generate<'a>(node: &Node) {
     let mut virtual_register = VirtualRegister::new();
-    let ir_vec = generate_ir(node, &mut virtual_register);
+    let ir_vec = gen_ir(node, &mut virtual_register);
     let ir_vec = allocate_register(ir_vec, &mut virtual_register);
     gen_x86(ir_vec, &virtual_register);
 }
 
 // ir generate
-fn generate_ir(node: &Node, virtual_register: &mut VirtualRegister) -> Vec<IR> {
+fn gen_ir(node: &Node, virtual_register: &mut VirtualRegister) -> Vec<IR> {
     let mut ir_vec: Vec<IR> = vec![];
-    let reg = _generate_ir(node, &mut ir_vec, virtual_register);
-    ir_vec.push(IR::RETURN(reg));
+    match node {
+        Node::CompoundStmt(_) => gen_stmt(node, &mut ir_vec, virtual_register),
+        _ => panic!("The node must be CompoundStmt, {:?}", node),
+    }
     return ir_vec;
 }
 
-fn _generate_ir(
-    node: &Node,
-    ir_vec: &mut Vec<IR>,
-    virtual_register: &mut VirtualRegister,
-) -> RegNo {
+fn gen_stmt(node: &Node, ir_vec: &mut Vec<IR>, virtual_register: &mut VirtualRegister) {
+    match node {
+        Node::Return(expr) => {
+            let reg = gen_expr(expr, ir_vec, virtual_register);
+            ir_vec.push(IR::RETURN(reg));
+            ir_vec.push(IR::KILL(reg));
+        }
+        Node::ExprStmt(expr) => {
+            let reg = gen_expr(expr, ir_vec, virtual_register);
+            ir_vec.push(IR::KILL(reg));
+        }
+        Node::CompoundStmt(stmts) => {
+            for stmt in stmts {
+                gen_stmt(stmt, ir_vec, virtual_register)
+            }
+        }
+        _ => panic!("unexpected node: {:?}", node),
+    }
+}
+
+fn gen_expr(node: &Node, ir_vec: &mut Vec<IR>, virtual_register: &mut VirtualRegister) -> RegNo {
     if let Node::Int(val) = node {
         let reg = virtual_register.issue_regno();
         ir_vec.push(IR::IMM { reg, val: *val });
         return reg;
     }
     if let Node::Binary { op, lhs, rhs } = node {
-        let dst = _generate_ir(lhs, ir_vec, virtual_register);
-        let src = _generate_ir(rhs, ir_vec, virtual_register);
+        let dst = gen_expr(lhs, ir_vec, virtual_register);
+        let src = gen_expr(rhs, ir_vec, virtual_register);
         if op == "+" {
             ir_vec.push(IR::ADD { dst, src });
             ir_vec.push(IR::KILL(src));
@@ -103,8 +121,8 @@ fn allocate_register(ir_vec: Vec<IR>, virtual_register: &mut VirtualRegister) ->
                 IR::DIV { dst, src }
             }
             IR::RETURN(reg) => {
-                virtual_register.kill(*reg);
-                IR::RETURN(*reg)
+                let reg = virtual_register.allocate(*reg);
+                IR::RETURN(reg)
             }
             IR::KILL(reg) => {
                 virtual_register.kill(*reg);

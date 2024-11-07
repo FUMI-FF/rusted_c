@@ -8,6 +8,33 @@ pub enum Node {
         lhs: Box<Node>,
         rhs: Box<Node>,
     },
+    Return(Box<Node>),
+    CompoundStmt(Vec<Node>),
+    ExprStmt(Box<Node>),
+}
+
+// stmt := "return" expr ";" | expr ";"
+pub fn stmt<'a>() -> Parser<'a, Token, Node> {
+    (expect(Token::Keyword("return".to_string())) & expr() & expect(Token::Symbol(b';'))).map(
+        |((_, expr), _)| {
+            let node = Node::Return(Box::new(expr));
+            Node::CompoundStmt(vec![node])
+        },
+    ) | (expr() & expect(Token::Symbol(b';'))).map(|(node, _)| Node::ExprStmt(Box::new(node)))
+}
+
+fn expect<'a>(expected: Token) -> Parser<'a, Token, ()> {
+    Parser::new(move |tokens: &[Token]| match tokens.get(0) {
+        Some(tk) if *tk == expected => Ok((&tokens[1..], ())),
+        Some(tk) => Err(ParseError::new(format!(
+            "{:?} is expected, but got {:?}",
+            expected, tk
+        ))),
+        None => Err(ParseError::new(format!(
+            "{:?} is expected but got nothing",
+            expected
+        ))),
+    })
 }
 
 // expr := mul ((+|-) mul)
@@ -131,4 +158,27 @@ fn test_expr() {
             }
         ))
     );
+}
+
+#[test]
+fn test_stmt() {
+    let stmt = stmt();
+    let empty: &[Token] = &[];
+    assert_eq!(
+        stmt.parse(&[
+            Token::Keyword("return".to_string()),
+            Token::Int(1),
+            Token::Symbol(b'+'),
+            Token::Int(1),
+            Token::Symbol(b';')
+        ]),
+        Ok((
+            empty,
+            Node::CompoundStmt(vec![Node::Return(Box::new(Node::Binary {
+                op: "+".to_string(),
+                lhs: Box::new(Node::Int(1)),
+                rhs: Box::new(Node::Int(1))
+            }))])
+        ))
+    )
 }

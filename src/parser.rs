@@ -1,4 +1,5 @@
 use std::ops::{BitAnd, BitOr};
+use std::str;
 
 // parser implementation
 #[derive(Debug, PartialEq)]
@@ -118,7 +119,7 @@ pub fn symbol<'a>(expected: u8) -> Parser<'a, u8, u8> {
     Parser::new(move |input: &[u8]| match input.get(0) {
         Some(ch) if *ch == expected => Ok((&input[1..], *ch)),
         Some(ch) => Err(ParseError {
-            message: format!("{} is expected, but got {}", expected, ch),
+            message: format!("{} is expected, but got {}", expected as char, *ch as char),
         }),
         None => Err(ParseError {
             message: format!("{} is expected, but got nothing", expected),
@@ -157,6 +158,25 @@ pub fn any_char<'a>() -> Parser<'a, u8, u8> {
 
 pub fn whitespaces<'a>() -> Parser<'a, u8, Vec<u8>> {
     any_char().is_a(|ch| ch.is_ascii_whitespace()).repeat0()
+}
+
+pub fn literal<'a>(expected: &'a [u8]) -> Parser<'a, u8, String> {
+    Parser::new(move |input: &[u8]| {
+        if &input[..expected.len()] == expected {
+            Ok((
+                &input[expected.len()..],
+                str::from_utf8(expected).expect("invalid utf-8").to_string(),
+            ))
+        } else {
+            Err(ParseError {
+                message: format!(
+                    "{:?} is expected but got {:?}",
+                    expected,
+                    &input[..expected.len()]
+                ),
+            })
+        }
+    })
 }
 
 #[test]
@@ -232,4 +252,13 @@ fn test_whitespaces() {
         whitespaces.parse(b" \t\nx"),
         Ok(("x".as_bytes(), vec![b' ', b'\t', b'\n']))
     );
+}
+
+#[test]
+fn test_literal() {
+    let literal = literal(b"return");
+    assert_eq!(
+        literal.parse(b"return 10;"),
+        Ok((" 10;".as_bytes(), "return".to_string()))
+    )
 }
