@@ -28,5 +28,6 @@ assert 14 'return 2+3*4;'
 assert 26 'return 2*3+4*5;'
 assert 5 'return 50/10;'
 assert 9 'return 6*3/2;'
+assert 21 '1+2; return 5+20-4;'
 
 echo "PASSED!!"

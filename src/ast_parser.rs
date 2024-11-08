@@ -13,14 +13,12 @@ pub enum Node {
     ExprStmt(Box<Node>),
 }
 
-// stmt := "return" expr ";" | expr ";"
+// stmt := (expr_stmt)* "return" expr ";"
 pub fn stmt<'a>() -> Parser<'a, Token, Node> {
-    (expect(Token::Keyword("return".to_string())) & expr() & expect(Token::Symbol(b';'))).map(
-        |((_, expr), _)| {
-            let node = Node::Return(Box::new(expr));
-            Node::CompoundStmt(vec![node])
-        },
-    ) | (expr() & expect(Token::Symbol(b';'))).map(|(node, _)| Node::ExprStmt(Box::new(node)))
+    (expr_stmt().repeat0() & return_stmt()).map(|(mut exprs, stmt)| {
+        exprs.push(stmt);
+        Node::CompoundStmt(exprs)
+    })
 }
 
 fn expect<'a>(expected: Token) -> Parser<'a, Token, ()> {
@@ -35,6 +33,17 @@ fn expect<'a>(expected: Token) -> Parser<'a, Token, ()> {
             expected
         ))),
     })
+}
+
+// return_stmt := "return" expr ";"
+fn return_stmt<'a>() -> Parser<'a, Token, Node> {
+    (expect(Token::Keyword("return".to_string())) & expr() & expect(Token::Symbol(b';')))
+        .map(|((_, expr), _)| Node::Return(Box::new(expr)))
+}
+
+// expr_stmt := expr ";"
+fn expr_stmt<'a>() -> Parser<'a, Token, Node> {
+    (expr() & expect(Token::Symbol(b';'))).map(|(expr, _)| Node::ExprStmt(Box::new(expr)))
 }
 
 // expr := mul ((+|-) mul)
