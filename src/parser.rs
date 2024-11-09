@@ -160,6 +160,10 @@ pub fn whitespaces<'a>() -> Parser<'a, u8, Vec<u8>> {
     any_char().is_a(|ch| ch.is_ascii_whitespace()).repeat0()
 }
 
+pub fn whitespace_wrap<'a, O: 'a>(p: Parser<'a, u8, O>) -> Parser<'a, u8, O> {
+    (whitespaces() & p & whitespaces()).map(|((_, x), _)| x)
+}
+
 pub fn literal<'a>(expected: &'a [u8]) -> Parser<'a, u8, String> {
     Parser::new(move |input: &[u8]| {
         if &input[..expected.len()] == expected {
@@ -260,5 +264,14 @@ fn test_literal() {
     assert_eq!(
         literal.parse(b"return 10;"),
         Ok((" 10;".as_bytes(), "return".to_string()))
+    )
+}
+
+#[test]
+fn test_whitespace_wrap() {
+    let p = whitespace_wrap(literal(b"xxx"));
+    assert_eq!(
+        p.parse(b"   xxx yyy"),
+        Ok(("yyy".as_bytes(), "xxx".to_string()))
     )
 }

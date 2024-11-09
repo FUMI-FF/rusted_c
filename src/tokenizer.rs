@@ -1,26 +1,27 @@
-use crate::parser::{digit, literal, one_of, symbol, whitespaces, Parser};
+use crate::parser::{digit, literal, one_of, symbol, whitespace_wrap, whitespaces, Parser};
 
 #[derive(Debug, PartialEq)]
 pub enum Token {
     Int(i32),
     Symbol(u8),
     Keyword(String),
+    Ident(String),
 }
 
 fn digit_token<'a>() -> Parser<'a, u8, Token> {
-    (whitespaces() & digit()).map(|(_, val)| Token::Int(val))
+    whitespace_wrap(digit()).map(|val| Token::Int(val))
 }
 
 fn operator_token<'a>() -> Parser<'a, u8, Token> {
-    (whitespaces() & one_of(b"+-*/")).map(|(_, op)| Token::Symbol(op))
+    whitespace_wrap(one_of(b"+-*/")).map(|op| Token::Symbol(op))
 }
 
 fn keyword_token<'a>(keyword: &'a [u8]) -> Parser<'a, u8, Token> {
-    (whitespaces() & literal(keyword)).map(|(_, keyword)| Token::Keyword(keyword))
+    whitespace_wrap(literal(&keyword)).map(|keyword| Token::Keyword(keyword))
 }
 
 fn symbol_token<'a>(expected: u8) -> Parser<'a, u8, Token> {
-    (whitespaces() & symbol(expected)).map(|(_, ch)| Token::Symbol(ch))
+    whitespace_wrap(symbol(expected)).map(|sym| Token::Symbol(sym))
 }
 
 // digit ([+-*/] digit)* ';'
