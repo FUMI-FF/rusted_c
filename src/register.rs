@@ -3,16 +3,16 @@ use std::collections::HashMap;
 pub type RegNo = usize;
 pub type RegIndex = usize;
 
-// VirtualRegister: manage CPU registers
-pub struct VirtualRegister<'a> {
+// RegAllocator: manage CPU registers
+pub struct RegAllocator<'a> {
     registors: [(&'a str, bool); 8], // avaiable physical registers
     counter: RegNo,                  // virtual register number
     dict: HashMap<RegNo, RegIndex>, // mapping from virtual register number to physical register index
 }
 
-impl<'a> VirtualRegister<'a> {
-    pub fn new() -> VirtualRegister<'a> {
-        VirtualRegister {
+impl<'a> RegAllocator<'a> {
+    pub fn new() -> RegAllocator<'a> {
+        RegAllocator {
             registors: [
                 ("rdi", false),
                 ("rsi", false),

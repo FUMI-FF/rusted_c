@@ -183,6 +183,13 @@ pub fn literal<'a>(expected: &'a [u8]) -> Parser<'a, u8, String> {
     })
 }
 
+pub fn ident<'a>() -> Parser<'a, u8, String> {
+    any_char()
+        .is_a(|ch| ch.is_ascii_alphabetic() || *ch == b'_')
+        .repeat1()
+        .map(|vec| str::from_utf8(&vec).expect("invalid utf-8").to_string())
+}
+
 #[test]
 fn test_symbol() {
     let symbol_parser = symbol(b'*');
@@ -273,5 +280,14 @@ fn test_whitespace_wrap() {
     assert_eq!(
         p.parse(b"   xxx yyy"),
         Ok(("yyy".as_bytes(), "xxx".to_string()))
+    )
+}
+
+#[test]
+fn test_ident() {
+    let p = ident();
+    assert_eq!(
+        p.parse(b"abc_d "),
+        Ok((" ".as_bytes(), "abc_d".to_string()))
     )
 }

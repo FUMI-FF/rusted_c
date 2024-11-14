@@ -4,7 +4,7 @@ mod parser;
 mod register;
 mod tokenizer;
 
-use ast_parser::stmt;
+use ast_parser::ast_parser;
 use codegen::generate;
 use std::env;
 use tokenizer::tokenizer;
@@ -15,7 +15,7 @@ fn main() {
     let tokenizer = tokenizer();
     let result = tokenizer.parse(input);
     let tokens = result.expect("failed to tokenize").1;
-    let node = stmt().parse(&tokens).expect("failed to build AST").1;
+    let node = ast_parser().parse(&tokens).expect("failed to build AST").1;
 
     println!(".intel_syntax noprefix");
     println!(".global main");
