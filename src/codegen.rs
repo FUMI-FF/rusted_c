@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use crate::ast_parser::Node;
 use crate::register::RegAllocator;
 use crate::register::{RegIndex, RegNo};
@@ -37,62 +39,65 @@ pub fn generate<'a>(node: &Node) {
 
 // ir generate
 fn gen_ir(node: &Node, env: &mut ProgramEnvironment) -> Vec<IR> {
-    let mut ir_vec: Vec<IR> = vec![];
     match node {
-        Node::CompoundStmt(_) => gen_stmt(node, &mut ir_vec, env),
+        Node::CompoundStmt(_) => gen_stmt(node, env),
         _ => panic!("The node must be CompoundStmt, {:?}", node),
     }
-    return ir_vec;
 }
 
-fn gen_stmt(node: &Node, ir_vec: &mut Vec<IR>, env: &mut ProgramEnvironment) {
+fn gen_stmt(node: &Node, env: &mut ProgramEnvironment) -> Vec<IR> {
     match node {
         Node::Return(expr) => {
-            let reg = gen_expr(expr, ir_vec, env);
-            ir_vec.push(IR::RETURN(reg));
-            ir_vec.push(IR::KILL(reg));
+            let (reg, mut vec) = gen_expr(expr, env);
+            vec.push(IR::RETURN(reg));
+            vec.push(IR::KILL(reg));
+            vec
         }
         Node::ExprStmt(expr) => {
-            let reg = gen_expr(expr, ir_vec, env);
-            ir_vec.push(IR::KILL(reg));
+            let (reg, mut vec) = gen_expr(expr, env);
+            vec.push(IR::KILL(reg));
+            vec
         }
         Node::CompoundStmt(stmts) => {
+            let mut vec = Vec::new();
             for stmt in stmts {
-                gen_stmt(stmt, ir_vec, env)
+                let mut v = gen_stmt(stmt, env);
+                vec.append(&mut v);
             }
+            vec
         }
         _ => panic!("unexpected node: {:?}", node),
     }
 }
 
-fn gen_expr(node: &Node, ir_vec: &mut Vec<IR>, env: &mut ProgramEnvironment) -> RegNo {
+fn gen_expr(node: &Node, env: &mut ProgramEnvironment) -> (RegNo, Vec<IR>) {
     if let Node::Int(val) = node {
         let reg = env.reg_alloc.issue_regno();
-        ir_vec.push(IR::IMM { reg, val: *val });
-        return reg;
+        return (reg, vec![IR::IMM { reg, val: *val }]);
     }
     if let Node::Binary { op, lhs, rhs } = node {
-        let dst = gen_expr(lhs, ir_vec, env);
-        let src = gen_expr(rhs, ir_vec, env);
+        let (dst, mut v1) = gen_expr(lhs, env);
+        let (src, mut v2) = gen_expr(rhs, env);
+        v1.append(&mut v2);
         if op == "+" {
-            ir_vec.push(IR::ADD { dst, src });
-            ir_vec.push(IR::KILL(src));
-            return dst;
+            v1.push(IR::ADD { dst, src });
+            v1.push(IR::KILL(src));
+            return (dst, v1);
         }
         if op == "-" {
-            ir_vec.push(IR::SUB { dst, src });
-            ir_vec.push(IR::KILL(src));
-            return dst;
+            v1.push(IR::SUB { dst, src });
+            v1.push(IR::KILL(src));
+            return (dst, v1);
         }
         if op == "*" {
-            ir_vec.push(IR::MUL { dst, src });
-            ir_vec.push(IR::KILL(src));
-            return dst;
+            v1.push(IR::MUL { dst, src });
+            v1.push(IR::KILL(src));
+            return (dst, v1);
         }
         if op == "/" {
-            ir_vec.push(IR::DIV { dst, src });
-            ir_vec.push(IR::KILL(src));
-            return dst;
+            v1.push(IR::DIV { dst, src });
+            v1.push(IR::KILL(src));
+            return (dst, v1);
         }
     }
 
