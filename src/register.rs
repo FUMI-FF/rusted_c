@@ -11,7 +11,7 @@ pub struct RegAllocator<'a> {
 }
 
 impl<'a> RegAllocator<'a> {
-    pub fn new() -> RegAllocator<'a> {
+    pub fn new(count: usize) -> RegAllocator<'a> {
         RegAllocator {
             registors: [
                 ("rdi", false),
@@ -23,7 +23,7 @@ impl<'a> RegAllocator<'a> {
                 ("r14", false),
                 ("r15", false),
             ],
-            counter: 0,
+            counter: count,
             dict: HashMap::new(),
         }
     }

@@ -164,25 +164,6 @@ pub fn whitespace_wrap<'a, O: 'a>(p: Parser<'a, u8, O>) -> Parser<'a, u8, O> {
     (whitespaces() & p & whitespaces()).map(|((_, x), _)| x)
 }
 
-pub fn literal<'a>(expected: &'a [u8]) -> Parser<'a, u8, String> {
-    Parser::new(move |input: &[u8]| {
-        if &input[..expected.len()] == expected {
-            Ok((
-                &input[expected.len()..],
-                str::from_utf8(expected).expect("invalid utf-8").to_string(),
-            ))
-        } else {
-            Err(ParseError {
-                message: format!(
-                    "{:?} is expected but got {:?}",
-                    expected,
-                    &input[..expected.len()]
-                ),
-            })
-        }
-    })
-}
-
 pub fn ident<'a>() -> Parser<'a, u8, String> {
     any_char()
         .is_a(|ch| ch.is_ascii_alphabetic() || *ch == b'_')
@@ -266,17 +247,8 @@ fn test_whitespaces() {
 }
 
 #[test]
-fn test_literal() {
-    let literal = literal(b"return");
-    assert_eq!(
-        literal.parse(b"return 10;"),
-        Ok((" 10;".as_bytes(), "return".to_string()))
-    )
-}
-
-#[test]
 fn test_whitespace_wrap() {
-    let p = whitespace_wrap(literal(b"xxx"));
+    let p = whitespace_wrap(ident());
     assert_eq!(
         p.parse(b"   xxx yyy"),
         Ok(("yyy".as_bytes(), "xxx".to_string()))

@@ -18,7 +18,7 @@ pub fn ast_parser<'a>() -> Parser<'a, Token, Node> {
     stmt()
 }
 
-// stmt := (assign)* "return" assign ";"
+// stmt := (assign ";")* "return" assign ";"
 fn stmt<'a>() -> Parser<'a, Token, Node> {
     let expr_stmt =
         (assign() & expect(Token::Symbol(b';'))).map(|(node, _)| Node::ExprStmt(Box::new(node)));
@@ -46,25 +46,13 @@ fn expect<'a>(expected: Token) -> Parser<'a, Token, ()> {
     })
 }
 
-// return_stmt := "return" expr ";"
-fn return_stmt<'a>() -> Parser<'a, Token, Node> {
-    (expect(Token::Keyword("return".to_string())) & expr() & expect(Token::Symbol(b';')))
-        .map(|((_, expr), _)| Node::Return(Box::new(expr)))
-}
-
-// expr_stmt := expr ";"
-fn expr_stmt<'a>() -> Parser<'a, Token, Node> {
-    (expr() & expect(Token::Symbol(b';'))).map(|(expr, _)| Node::ExprStmt(Box::new(expr)))
-}
-
 // assign := expr | expr "=" expr ;
 fn assign<'a>() -> Parser<'a, Token, Node> {
-    expr()
-        | (expr() & operator(b"=") & expr()).map(|((lhs, op), rhs)| Node::Binary {
-            op,
-            lhs: Box::new(lhs),
-            rhs: Box::new(rhs),
-        })
+    (expr() & operator(b"=") & expr()).map(|((lhs, op), rhs)| Node::Binary {
+        op,
+        lhs: Box::new(lhs),
+        rhs: Box::new(rhs),
+    }) | expr()
 }
 
 // expr := mul ((+|-) mul)
@@ -141,6 +129,16 @@ fn test_number() {
     let number = number();
     let empty: &[Token] = &[];
     assert_eq!(number.parse(&[Token::Int(10)]), Ok((empty, Node::Int(10))));
+}
+
+#[test]
+fn test_ident() {
+    let ident = ident();
+    let empty: &[Token] = &[];
+    assert_eq!(
+        ident.parse(&[Token::Ident("a".to_string())]),
+        Ok((empty, Node::Ident("a".to_string())))
+    )
 }
 
 #[test]
