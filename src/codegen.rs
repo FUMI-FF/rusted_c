@@ -10,6 +10,7 @@ enum IR {
     IMM { reg: RegNo, val: i32 },
     MOV { dst: RegNo, src: RegNo },
     ADD { dst: RegNo, src: RegNo },
+    AddImm { dst: RegNo, val: i32 },
     SUB { dst: RegNo, src: RegNo },
     MUL { dst: RegNo, src: RegNo },
     DIV { dst: RegNo, src: RegNo },
@@ -155,27 +156,24 @@ fn gen_lval(node: &Node, env: &mut ProgramEnvironment) -> (RegNo, Vec<IR>) {
         env.vars.insert(name.to_string(), env.bpoff);
         env.bpoff += 8;
     }
-    let r1 = env.reg_alloc.issue_regno();
+    let r = env.reg_alloc.issue_regno();
     let offset = env
         .vars
         .get(name)
         .expect(format!("var {} not exists", name).as_str());
-    let r2 = env.reg_alloc.issue_regno();
 
     // load variable address into r1
     (
-        r1,
+        r,
         vec![
             IR::MOV {
-                dst: r1,
+                dst: r,
                 src: env.basereg,
             },
-            IR::IMM {
-                reg: r2,
+            IR::AddImm {
+                dst: r,
                 val: *offset as i32,
             },
-            IR::ADD { dst: r1, src: r2 },
-            IR::KILL(r2),
         ],
     )
 }
@@ -197,6 +195,10 @@ fn allocate_register(ir_vec: Vec<IR>, env: &mut ProgramEnvironment) -> Vec<IR> {
                 let dst: RegIndex = env.reg_alloc.allocate(*dst);
                 let src: RegIndex = env.reg_alloc.allocate(*src);
                 IR::ADD { dst, src }
+            }
+            IR::AddImm { dst, val } => {
+                let dst: RegIndex = env.reg_alloc.allocate(*dst);
+                IR::AddImm { dst, val: *val }
             }
             IR::SUB { dst, src } => {
                 let dst: RegIndex = env.reg_alloc.allocate(*dst);
@@ -269,6 +271,10 @@ fn gen_x86(ir_vec: Vec<IR>, env: &mut ProgramEnvironment) {
             let dst = env.reg_alloc.get_register(*dst);
             let src = env.reg_alloc.get_register(*src);
             println!("  add {}, {}", dst, src);
+        }
+        IR::AddImm { dst, val } => {
+            let dst = env.reg_alloc.get_register(*dst);
+            println!("  add {}, {}", dst, val)
         }
         IR::SUB { dst, src } => {
             let dst = env.reg_alloc.get_register(*dst);
