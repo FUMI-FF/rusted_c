@@ -13,7 +13,7 @@ fn digit_token<'a>() -> Parser<'a, u8, Token> {
 }
 
 fn symbol_token<'a>() -> Parser<'a, u8, Token> {
-    whitespace_wrap(one_of(b"+-*/;=")).map(|op| Token::Symbol(op))
+    whitespace_wrap(one_of(b"+-*/;=()")).map(|op| Token::Symbol(op))
 }
 
 fn ident_or_keyword_token<'a>() -> Parser<'a, u8, Token> {

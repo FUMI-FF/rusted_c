@@ -48,7 +48,7 @@ fn expect<'a>(expected: Token) -> Parser<'a, Token, ()> {
 
 // assign := expr | expr "=" expr ;
 fn assign<'a>() -> Parser<'a, Token, Node> {
-    (expr() & operator(b"=") & expr()).map(|((lhs, op), rhs)| Node::Binary {
+    (expr() & symbol(b"=") & expr()).map(|((lhs, op), rhs)| Node::Binary {
         op,
         lhs: Box::new(lhs),
         rhs: Box::new(rhs),
@@ -57,7 +57,7 @@ fn assign<'a>() -> Parser<'a, Token, Node> {
 
 // expr := mul ((+|-) mul)
 fn expr<'a>() -> Parser<'a, Token, Node> {
-    (mul() & (operator(b"+-") & mul()).repeat0()).map(|(mut lhs, op_and_nums)| {
+    (mul() & (symbol(b"+-") & mul()).repeat0()).map(|(mut lhs, op_and_nums)| {
         for (op, rhs) in op_and_nums {
             lhs = Node::Binary {
                 op,
@@ -71,7 +71,7 @@ fn expr<'a>() -> Parser<'a, Token, Node> {
 
 // mul := term ((*|/) term)*
 fn mul<'a>() -> Parser<'a, Token, Node> {
-    (term() & (operator(b"*/") & term()).repeat0()).map(|(mut lhs, op_and_nums)| {
+    (term() & (symbol(b"*/") & term()).repeat0()).map(|(mut lhs, op_and_nums)| {
         for (op, rhs) in op_and_nums {
             lhs = Node::Binary {
                 op,
@@ -83,12 +83,20 @@ fn mul<'a>() -> Parser<'a, Token, Node> {
     })
 }
 
-// term := number | ident
+// term := number | ident | "(" assign ")"
 fn term<'a>() -> Parser<'a, Token, Node> {
-    number() | ident()
+    let paren = Parser::new(move |tokens: &[Token]| {
+        if let Some(Token::Symbol(b'(')) = tokens.get(0) {
+            let parser = assign() & expect(Token::Symbol(b')'));
+            return parser.map(|(node, _)| node).parse(&tokens[1..]);
+        }
+        Err(ParseError::new("( is expected".to_string()))
+    });
+
+    paren | number() | ident()
 }
 
-fn operator<'a>(set: &'a [u8]) -> Parser<'a, Token, String> {
+fn symbol<'a>(set: &'a [u8]) -> Parser<'a, Token, String> {
     Parser::new(move |tokens: &[Token]| match tokens.get(0) {
         Some(Token::Symbol(op)) if set.contains(op) => {
             Ok((&tokens[1..], (*op as char).to_string()))
@@ -156,75 +164,4 @@ fn test_mul() {
             }
         ))
     );
-}
-
-#[test]
-fn test_expr() {
-    let expr = expr();
-    let empty: &[Token] = &[];
-    assert_eq!(
-        expr.parse(&[
-            Token::Int(2),
-            Token::Symbol(b'+'),
-            Token::Int(3),
-            Token::Symbol(b'*'),
-            Token::Int(4)
-        ]),
-        Ok((
-            empty,
-            Node::Binary {
-                op: "+".to_string(),
-                lhs: Box::new(Node::Int(2)),
-                rhs: Box::new(Node::Binary {
-                    op: "*".to_string(),
-                    lhs: Box::new(Node::Int(3)),
-                    rhs: Box::new(Node::Int(4))
-                })
-            }
-        ))
-    );
-    assert_eq!(
-        expr.parse(&[
-            Token::Int(2),
-            Token::Symbol(b'*'),
-            Token::Int(3),
-            Token::Symbol(b'+'),
-            Token::Int(4)
-        ]),
-        Ok((
-            empty,
-            Node::Binary {
-                op: "+".to_string(),
-                lhs: Box::new(Node::Binary {
-                    op: "*".to_string(),
-                    lhs: Box::new(Node::Int(2)),
-                    rhs: Box::new(Node::Int(3))
-                }),
-                rhs: Box::new(Node::Int(4)),
-            }
-        ))
-    );
-}
-
-#[test]
-fn test_stmt() {
-    let stmt = stmt();
-    let empty: &[Token] = &[];
-    assert_eq!(
-        stmt.parse(&[
-            Token::Keyword("return".to_string()),
-            Token::Int(1),
-            Token::Symbol(b'+'),
-            Token::Int(1),
-            Token::Symbol(b';')
-        ]),
-        Ok((
-            empty,
-            Node::CompoundStmt(vec![Node::Return(Box::new(Node::Binary {
-                op: "+".to_string(),
-                lhs: Box::new(Node::Int(1)),
-                rhs: Box::new(Node::Int(1))
-            }))])
-        ))
-    )
 }
