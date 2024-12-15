@@ -1,4 +1,4 @@
-use crate::parser::{digit, ident, one_of, whitespace_wrap, Parser};
+use crate::parser::{digit, ident, one_of, whitespace_wrap, ParseError, Parser};
 
 #[derive(Debug, PartialEq)]
 pub enum Token {
@@ -16,38 +16,74 @@ fn symbol_token<'a>() -> Parser<'a, u8, Token> {
     whitespace_wrap(one_of(b"+-*/;=()")).map(|op| Token::Symbol(op))
 }
 
-fn ident_or_keyword_token<'a>() -> Parser<'a, u8, Token> {
-    whitespace_wrap(ident()).map(|val| {
-        if val == "return" {
-            Token::Keyword(val)
-        } else {
-            Token::Ident(val)
-        }
+fn ident_token<'a>() -> Parser<'a, u8, Token> {
+    whitespace_wrap(ident()).map(|val| Token::Ident(val))
+}
+
+fn keyword_token<'a>() -> Parser<'a, u8, Token> {
+    Parser::new(|input: &[u8]| {
+        whitespace_wrap(ident())
+            .parse(input)
+            .and_then(|(rest, val)| {
+                if val == "return" || val == "if" {
+                    return Ok((rest, Token::Keyword(val)));
+                }
+                return Err(ParseError::new(format!("unexpected keyword: {}", val)));
+            })
     })
 }
 
 pub fn tokenizer<'a>() -> Parser<'a, u8, Vec<Token>> {
-    (digit_token() | symbol_token() | ident_or_keyword_token()).repeat1()
+    (digit_token() | symbol_token() | keyword_token() | ident_token()).repeat1()
 }
 
 #[test]
-fn test_tokenize() {
-    let tokenizer = tokenizer();
+fn test_digit_token() {
+    let digit = digit_token();
+    assert_eq!(digit.parse(b"10"), Ok(("".as_bytes(), Token::Int(10))));
+}
+
+#[test]
+fn test_symbol_token() {
+    let symbol = symbol_token().repeat0();
     assert_eq!(
-        tokenizer.parse(b"x=10;return 1 + 1;"),
+        symbol.parse(b"+-*/;=()"),
         Ok((
             "".as_bytes(),
             vec![
-                Token::Ident("x".to_string()),
-                Token::Symbol(b'='),
-                Token::Int(10),
-                Token::Symbol(b';'),
-                Token::Keyword("return".to_string()),
-                Token::Int(1),
                 Token::Symbol(b'+'),
-                Token::Int(1),
+                Token::Symbol(b'-'),
+                Token::Symbol(b'*'),
+                Token::Symbol(b'/'),
                 Token::Symbol(b';'),
+                Token::Symbol(b'='),
+                Token::Symbol(b'('),
+                Token::Symbol(b')'),
             ]
         ))
-    );
+    )
+}
+
+#[test]
+fn test_ident_token() {
+    let ident = ident_token();
+    assert_eq!(
+        ident.parse(b"xyz"),
+        Ok(("".as_bytes(), Token::Ident("xyz".to_string())))
+    )
+}
+
+#[test]
+fn test_keyword_token() {
+    let keyword = keyword_token().repeat0();
+    assert_eq!(
+        keyword.parse(b"return if"),
+        Ok((
+            "".as_bytes(),
+            vec![
+                Token::Keyword("return".to_string()),
+                Token::Keyword("if".to_string())
+            ]
+        ))
+    )
 }
