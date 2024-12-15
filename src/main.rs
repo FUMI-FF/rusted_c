@@ -1,5 +1,6 @@
 mod ast_parser;
 mod codegen;
+mod ir;
 mod parser;
 mod register;
 mod tokenizer;

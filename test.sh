@@ -31,5 +31,6 @@ assert 9 'return 6*3/2;'
 assert 21 '1+2; return 5+20-4;'
 assert 2 'a=2; return a;'
 assert 10 'a=2; b=3+2; return a*b;'
+assert 10 'return (1+4)*2;'
 
 echo "PASSED!!"
