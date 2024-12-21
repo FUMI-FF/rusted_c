@@ -42,14 +42,14 @@ fn expect_keyword<'a>(expected: &str) -> Parser<'a, Token, ()> {
 fn expect<'a>(expected: Token) -> Parser<'a, Token, ()> {
     Parser::new(move |tokens: &[Token]| match tokens.get(0) {
         Some(tk) if *tk == expected => Ok((&tokens[1..], ())),
-        Some(tk) => Err(ParseError::new(format!(
-            "{:?} is expected, but got {:?}",
-            expected, tk
-        ))),
-        None => Err(ParseError::new(format!(
-            "{:?} is expected but got nothing",
-            expected
-        ))),
+        Some(tk) => Err(ParseError::new(
+            format!("{:?} is expected, but got {:?}", expected, tk),
+            tokens,
+        )),
+        None => Err(ParseError::new(
+            format!("{:?} is expected but got nothing", expected),
+            tokens,
+        )),
     })
 }
 
@@ -101,7 +101,7 @@ fn term<'a>() -> Parser<'a, Token, Node> {
             let parser = assign() & expect_symbol(")");
             return parser.map(|(node, _)| node).parse(&tokens[1..]);
         }
-        _ => Err(ParseError::new("( is expected".to_string())),
+        _ => Err(ParseError::new("( is expected".to_string(), tokens)),
     });
 
     paren | number() | ident()
@@ -111,12 +111,13 @@ fn term<'a>() -> Parser<'a, Token, Node> {
 fn number<'a>() -> Parser<'a, Token, Node> {
     Parser::new(|tokens: &[Token]| match tokens.get(0) {
         Some(Token::Int(val)) => Ok((&tokens[1..], Node::Int(*val))),
-        Some(token) => Err(ParseError::new(format!(
-            "number is expected but got {:?}",
-            token
-        ))),
+        Some(token) => Err(ParseError::new(
+            format!("number is expected but got {:?}", token),
+            tokens,
+        )),
         None => Err(ParseError::new(
             "number is expected but got nothing".to_string(),
+            tokens,
         )),
     })
 }
@@ -124,19 +125,20 @@ fn number<'a>() -> Parser<'a, Token, Node> {
 fn symbol<'a>(set: Vec<String>) -> Parser<'a, Token, String> {
     Parser::new(move |tokens: &[Token]| match tokens.get(0) {
         Some(Token::Symbol(op)) if set.contains(op) => Ok((&tokens[1..], op.to_owned())),
-        _ => Err(ParseError::new(format!("{:?} is expected", set))),
+        _ => Err(ParseError::new(format!("{:?} is expected", set), tokens)),
     })
 }
 
 fn ident<'a>() -> Parser<'a, Token, Node> {
     Parser::new(|tokens: &[Token]| match tokens.get(0) {
         Some(Token::Ident(id)) => Ok((&tokens[1..], Node::Ident(id.to_string()))),
-        Some(token) => Err(ParseError::new(format!(
-            "ident is expected but got {:?}",
-            token
-        ))),
+        Some(token) => Err(ParseError::new(
+            format!("ident is expected but got {:?}", token),
+            tokens,
+        )),
         None => Err(ParseError::new(
             "ident is expected but got nothing".to_string(),
+            tokens,
         )),
     })
 }

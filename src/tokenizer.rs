@@ -30,7 +30,10 @@ fn keyword_token<'a>() -> Parser<'a, u8, Token> {
                 if val == "return" || val == "if" {
                     return Ok((rest, Token::Keyword(val)));
                 }
-                return Err(ParseError::new(format!("unexpected keyword: {}", val)));
+                return Err(ParseError::new(
+                    format!("unexpected keyword: {}", val),
+                    input,
+                ));
             })
     })
 }

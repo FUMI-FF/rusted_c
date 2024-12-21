@@ -1,3 +1,4 @@
+use std::fmt::Debug;
 use std::ops::{BitAnd, BitOr};
 use std::str;
 
@@ -5,11 +6,16 @@ use std::str;
 #[derive(Debug, PartialEq)]
 pub struct ParseError {
     message: String,
+    input_snapshot: String,
 }
 
 impl ParseError {
-    pub fn new(message: String) -> Self {
-        Self { message }
+    pub fn new(message: String, input: &[impl std::fmt::Debug]) -> Self {
+        let input_snapshot = format!("{:?}", input);
+        Self {
+            message,
+            input_snapshot,
+        }
     }
 }
 
@@ -20,10 +26,14 @@ pub struct Parser<'a, I, O> {
     parser: Box<ParseFn<'a, I, O>>,
 }
 
-impl<'a, I, O: 'a> Parser<'a, I, O> {
+impl<'a, I, O: 'a> Parser<'a, I, O>
+where
+    I: std::fmt::Debug,
+{
     pub fn new<P>(parser: P) -> Self
     where
         P: Fn(&'a [I]) -> Result<(&'a [I], O), ParseError> + 'a,
+        I: std::fmt::Debug,
     {
         Self {
             parser: Box::new(parser),
@@ -81,14 +91,15 @@ impl<'a, I, O: 'a> Parser<'a, I, O> {
     {
         Parser::new(move |input: &[I]| match self.parse(input) {
             Ok((next, ret)) if pred(&ret) => Ok((next, ret)),
-            _ => Err(ParseError {
-                message: "pred failed".to_string(),
-            }),
+            _ => Err(ParseError::new("pred failed".to_string(), input)),
         })
     }
 }
 
-impl<'a, I, A: 'a, B: 'a> BitAnd<Parser<'a, I, B>> for Parser<'a, I, A> {
+impl<'a, I, A: 'a, B: 'a> BitAnd<Parser<'a, I, B>> for Parser<'a, I, A>
+where
+    I: std::fmt::Debug,
+{
     type Output = Parser<'a, I, (A, B)>;
 
     // pair: A & B
@@ -103,7 +114,10 @@ impl<'a, I, A: 'a, B: 'a> BitAnd<Parser<'a, I, B>> for Parser<'a, I, A> {
     }
 }
 
-impl<'a, I, A: 'a> BitOr<Parser<'a, I, A>> for Parser<'a, I, A> {
+impl<'a, I, A: 'a> BitOr<Parser<'a, I, A>> for Parser<'a, I, A>
+where
+    I: std::fmt::Debug,
+{
     type Output = Parser<'a, I, A>;
 
     // either: A | B
@@ -118,24 +132,28 @@ impl<'a, I, A: 'a> BitOr<Parser<'a, I, A>> for Parser<'a, I, A> {
 pub fn symbol<'a>(expected: u8) -> Parser<'a, u8, u8> {
     Parser::new(move |input: &[u8]| match input.get(0) {
         Some(ch) if *ch == expected => Ok((&input[1..], *ch)),
-        Some(ch) => Err(ParseError {
-            message: format!("{} is expected, but got {}", expected as char, *ch as char),
-        }),
-        None => Err(ParseError {
-            message: format!("{} is expected, but got nothing", expected),
-        }),
+        Some(ch) => Err(ParseError::new(
+            format!("{} is expected, but got {}", expected as char, *ch as char),
+            input,
+        )),
+        None => Err(ParseError::new(
+            format!("{} is expected, but got nothing", expected),
+            input,
+        )),
     })
 }
 
 pub fn one_of<'a>(set: &'a [u8]) -> Parser<'a, u8, u8> {
     Parser::new(move |input: &[u8]| match input.get(0) {
         Some(ch) if set.contains(ch) => Ok((&input[1..], *ch)),
-        Some(ch) => Err(ParseError {
-            message: format!("one of {:?} is expected, but got {}", set, ch),
-        }),
-        None => Err(ParseError {
-            message: format!("one of {:?} is expected, but got nothing", set),
-        }),
+        Some(ch) => Err(ParseError::new(
+            format!("one of {:?} is expected, but got {}", set, ch),
+            input,
+        )),
+        None => Err(ParseError::new(
+            format!("one of {:?} is expected, but got nothing", set),
+            input,
+        )),
     })
 }
 
@@ -150,9 +168,10 @@ pub fn digit<'a>() -> Parser<'a, u8, i32> {
 pub fn any_char<'a>() -> Parser<'a, u8, u8> {
     Parser::new(move |input: &[u8]| match input.get(0) {
         Some(ch) => Ok((&input[1..], *ch)),
-        None => Err(ParseError {
-            message: "char is expected but got nothing".to_string(),
-        }),
+        None => Err(ParseError::new(
+            "char is expected but got nothing".to_string(),
+            input,
+        )),
     })
 }
 
