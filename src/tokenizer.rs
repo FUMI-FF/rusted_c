@@ -1,9 +1,10 @@
 use crate::parser::{digit, ident, one_of, whitespace_wrap, ParseError, Parser};
+use std::str;
 
 #[derive(Debug, PartialEq)]
 pub enum Token {
     Int(i32),
-    Symbol(u8),
+    Symbol(String),
     Keyword(String),
     Ident(String),
 }
@@ -13,7 +14,8 @@ fn digit_token<'a>() -> Parser<'a, u8, Token> {
 }
 
 fn symbol_token<'a>() -> Parser<'a, u8, Token> {
-    whitespace_wrap(one_of(b"+-*/;=()")).map(|op| Token::Symbol(op))
+    whitespace_wrap(one_of(b"+-*/;=()"))
+        .map(|op| Token::Symbol(str::from_utf8(&[op]).unwrap().to_string()))
 }
 
 fn ident_token<'a>() -> Parser<'a, u8, Token> {
@@ -51,14 +53,14 @@ fn test_symbol_token() {
         Ok((
             "".as_bytes(),
             vec![
-                Token::Symbol(b'+'),
-                Token::Symbol(b'-'),
-                Token::Symbol(b'*'),
-                Token::Symbol(b'/'),
-                Token::Symbol(b';'),
-                Token::Symbol(b'='),
-                Token::Symbol(b'('),
-                Token::Symbol(b')'),
+                Token::Symbol("+".to_string()),
+                Token::Symbol("-".to_string()),
+                Token::Symbol("*".to_string()),
+                Token::Symbol("/".to_string()),
+                Token::Symbol(";".to_string()),
+                Token::Symbol("=".to_string()),
+                Token::Symbol("(".to_string()),
+                Token::Symbol(")".to_string()),
             ]
         ))
     )
