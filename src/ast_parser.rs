@@ -13,22 +13,50 @@ pub enum Node {
     Return(Box<Node>),
     CompoundStmt(Vec<Node>),
     ExprStmt(Box<Node>),
+    IfStmt {
+        cond: Box<Node>,
+        then: Box<Node>,
+    },
 }
 
 pub fn ast_parser<'a>() -> Parser<'a, Token, Node> {
-    stmt()
+    compound_stmt()
 }
 
-// stmt := (assign ";")* "return" assign ";"
-fn stmt<'a>() -> Parser<'a, Token, Node> {
-    let expr_stmt = (assign() & expect_symbol(";")).map(|(node, _)| Node::ExprStmt(Box::new(node)));
-    let ret_stmt = (expect_keyword("return") & assign() & expect_symbol(";"))
-        .map(|((_, node), _)| Node::Return(Box::new(node)));
+// compound_stmt := stmt{1,n}
+fn compound_stmt<'a>() -> Parser<'a, Token, Node> {
+    stmt().repeat1().map(|nodes| Node::CompoundStmt(nodes))
+}
 
-    (expr_stmt.repeat0() & ret_stmt).map(|(mut nodes, ret_node)| {
-        nodes.push(ret_node);
-        Node::CompoundStmt(nodes)
-    })
+// stmt := return_stmt | expr_stmt | if_stmt
+fn stmt<'a>() -> Parser<'a, Token, Node> {
+    return_stmt() | expr_stmt() | if_stmt()
+}
+
+// return_stmt := "return" assign ";"
+fn return_stmt<'a>() -> Parser<'a, Token, Node> {
+    (expect_keyword("return") & assign() & expect_symbol(";"))
+        .map(|((_, node), _)| Node::Return(Box::new(node)))
+}
+
+// expr_stmt := assign ";"
+fn expr_stmt<'a>() -> Parser<'a, Token, Node> {
+    (assign() & expect_symbol(";")).map(|(node, _)| Node::ExprStmt(Box::new(node)))
+}
+
+// if_stmt := "if" "(" expr ")" "{" stmt "}"
+fn if_stmt<'a>() -> Parser<'a, Token, Node> {
+    expect_keyword("if")
+        .ignore_then(expect_symbol("("))
+        .ignore_then(expr())
+        .then_ignore(expect_symbol(")"))
+        .then_ignore(expect_symbol("{"))
+        .then(stmt())
+        .then_ignore(expect_symbol("}"))
+        .map(|(cond, then)| Node::IfStmt {
+            cond: Box::new(cond),
+            then: Box::new(then),
+        })
 }
 
 fn expect_symbol<'a>(expected: &str) -> Parser<'a, Token, ()> {

@@ -94,6 +94,40 @@ where
             _ => Err(ParseError::new("pred failed".to_string(), input)),
         })
     }
+
+    pub fn then<B>(self, other: Parser<'a, I, B>) -> Parser<'a, I, (O, B)>
+    where
+        B: 'a,
+    {
+        Parser::new(move |input: &[I]| match self.parse(input) {
+            Ok((next, ret1)) => match other.parse(next) {
+                Ok((_final, ret2)) => Ok((_final, (ret1, ret2))),
+                Err(err) => Err(err),
+            },
+            Err(err) => Err(err),
+        })
+    }
+
+    pub fn or(self, other: Parser<'a, I, O>) -> Parser<'a, I, O> {
+        Parser::new(move |input: &[I]| match self.parse(input) {
+            Ok((next, ret)) => Ok((next, ret)),
+            Err(_) => other.parse(input),
+        })
+    }
+
+    pub fn then_ignore<B>(self, other: Parser<'a, I, B>) -> Parser<'a, I, O>
+    where
+        B: 'a,
+    {
+        (self & other).map(|(ret, _)| ret)
+    }
+
+    pub fn ignore_then<B>(self, other: Parser<'a, I, B>) -> Parser<'a, I, B>
+    where
+        B: 'a,
+    {
+        (self & other).map(|(_, ret)| ret)
+    }
 }
 
 impl<'a, I, A: 'a, B: 'a> BitAnd<Parser<'a, I, B>> for Parser<'a, I, A>
@@ -104,13 +138,7 @@ where
 
     // pair: A & B
     fn bitand(self, rhs: Parser<'a, I, B>) -> Parser<'a, I, (A, B)> {
-        Parser::new(move |input: &[I]| match self.parse(input) {
-            Ok((next, ret1)) => match rhs.parse(next) {
-                Ok((_final, ret2)) => Ok((_final, (ret1, ret2))),
-                Err(err) => Err(err),
-            },
-            Err(err) => Err(err),
-        })
+        self.then(rhs)
     }
 }
 
@@ -122,10 +150,7 @@ where
 
     // either: A | B
     fn bitor(self, rhs: Parser<'a, I, A>) -> Parser<'a, I, A> {
-        Parser::new(move |input: &[I]| match self.parse(input) {
-            Ok((next, ret)) => Ok((next, ret)),
-            Err(_) => rhs.parse(input),
-        })
+        self.or(rhs)
     }
 }
 
