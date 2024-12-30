@@ -104,14 +104,8 @@ fn allocate_register(ir_vec: Vec<IR>, env: &mut ProgramEnvironment) -> Vec<IR> {
         .collect()
 }
 
-fn gen_label(env: &mut ProgramEnvironment) -> String {
-    let label = format!(".L{}", env.label_num);
-    env.label_num += 1;
-    return label;
-}
-
 fn gen_x86(ir_vec: Vec<IR>, env: &mut ProgramEnvironment) {
-    let label = gen_label(env);
+    let label = ".Lend";
 
     println!("  push rbp");
     println!("  mov rbp, rsp");
