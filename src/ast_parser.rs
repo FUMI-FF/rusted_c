@@ -44,8 +44,39 @@ fn expr_stmt<'a>() -> Parser<'a, Token, Node> {
     (assign() & expect_symbol(";")).map(|(node, _)| Node::ExprStmt(Box::new(node)))
 }
 
-// if_stmt := "if" "(" expr ")" "{" stmt "}"
+// if_stmt := if_stmt_terminal | if_stmt_non_terminal
 fn if_stmt<'a>() -> Parser<'a, Token, Node> {
+    Parser::new(|input| {
+        if let Ok(val) = if_stmt_terminal().parse(input) {
+            return Ok(val);
+        }
+        if matches!(input.get(0), Some(Token::Keyword(val)) if val == "if") {
+            return if_stmt_non_terminal().parse(input);
+        }
+        Err(ParseError::new(
+            "Expected valid if-statement.".to_string(),
+            input,
+        ))
+    })
+}
+
+// if_stmt_terminal := "if" "(" expr ")" "{" return_stmt | expr_stmt "}"
+fn if_stmt_terminal<'a>() -> Parser<'a, Token, Node> {
+    expect_keyword("if")
+        .ignore_then(expect_symbol("("))
+        .ignore_then(expr())
+        .then_ignore(expect_symbol(")"))
+        .then_ignore(expect_symbol("{"))
+        .then(return_stmt() | expr_stmt())
+        .then_ignore(expect_symbol("}"))
+        .map(|(cond, then)| Node::IfStmt {
+            cond: Box::new(cond),
+            then: Box::new(then),
+        })
+}
+
+// if_stmt_non_terminal := "if" "(" expr ")" "{" stmt "}"
+fn if_stmt_non_terminal<'a>() -> Parser<'a, Token, Node> {
     expect_keyword("if")
         .ignore_then(expect_symbol("("))
         .ignore_then(expr())
