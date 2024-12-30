@@ -95,6 +95,11 @@ fn allocate_register(ir_vec: Vec<IR>, env: &mut ProgramEnvironment) -> Vec<IR> {
                 IR::NOP
             }
             IR::NOP => IR::NOP,
+            IR::LABEL(label) => IR::LABEL(*label),
+            IR::UNLESS { reg, label } => {
+                let reg = env.reg_alloc.allocate(*reg);
+                IR::UNLESS { reg, label: *label }
+            }
         })
         .collect()
 }
@@ -169,6 +174,14 @@ fn gen_x86(ir_vec: Vec<IR>, env: &mut ProgramEnvironment) {
             let addr = env.reg_alloc.get_register(*addr);
             let reg = env.reg_alloc.get_register(*reg);
             println!("  mov [{}], {}", addr, reg);
+        }
+        IR::LABEL(label) => {
+            println!(".L{}:", label);
+        }
+        IR::UNLESS { reg, label } => {
+            let reg = env.reg_alloc.get_register(*reg);
+            println!("  cmp {}, 0", reg);
+            println!("  je .L{}", label);
         }
         _ => {}
     });

@@ -18,6 +18,8 @@ pub enum IR {
     RETURN(RegNo),
     KILL(RegNo),
     NOP,
+    UNLESS { reg: RegNo, label: usize },
+    LABEL(usize),
 }
 
 // ir generate
@@ -38,6 +40,17 @@ pub fn gen_ir(node: &Node, env: &mut ProgramEnvironment) -> Vec<IR> {
 
 fn gen_stmt(node: &Node, env: &mut ProgramEnvironment) -> Vec<IR> {
     match node {
+        Node::IfStmt { cond, then } => {
+            let (reg, mut vec) = gen_expr(cond, env);
+            let label = env.label_num;
+            env.label_num += 1;
+            vec.push(IR::UNLESS { reg, label });
+            vec.push(IR::KILL(reg));
+            let mut v = gen_stmt(then, env);
+            vec.append(&mut v);
+            vec.push(IR::LABEL(label));
+            vec
+        }
         Node::Return(expr) => {
             let (reg, mut vec) = gen_expr(expr, env);
             vec.push(IR::RETURN(reg));
