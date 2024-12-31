@@ -128,6 +128,13 @@ where
     {
         (self & other).map(|(_, ret)| ret)
     }
+
+    pub fn opt(self) -> Parser<'a, I, Option<O>> {
+        Parser::new(move |input| match self.parse(input) {
+            Ok((next, result)) => Ok((next, Some(result))),
+            _ => Ok((input, None)),
+        })
+    }
 }
 
 impl<'a, I, A: 'a, B: 'a> BitAnd<Parser<'a, I, B>> for Parser<'a, I, A>

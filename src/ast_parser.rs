@@ -16,6 +16,7 @@ pub enum Node {
     IfStmt {
         cond: Box<Node>,
         then: Box<Node>,
+        els: Box<Option<Node>>,
     },
 }
 
@@ -44,6 +45,10 @@ fn expr_stmt<'a>() -> Parser<'a, Token, Node> {
     (assign() & expect_symbol(";")).map(|(node, _)| Node::ExprStmt(Box::new(node)))
 }
 
+fn terminal_stmt<'a>() -> Parser<'a, Token, Node> {
+    return_stmt() | expr_stmt()
+}
+
 // if_stmt := if_stmt_terminal | if_stmt_non_terminal
 fn if_stmt<'a>() -> Parser<'a, Token, Node> {
     Parser::new(|input| {
@@ -66,10 +71,12 @@ fn if_stmt_terminal<'a>() -> Parser<'a, Token, Node> {
         .ignore_then(expect_symbol("("))
         .ignore_then(expr())
         .then_ignore(expect_symbol(")"))
-        .then(return_stmt() | expr_stmt())
-        .map(|(cond, then)| Node::IfStmt {
+        .then(terminal_stmt())
+        .then((expect_keyword("else").ignore_then(terminal_stmt())).opt())
+        .map(|((cond, then), els)| Node::IfStmt {
             cond: Box::new(cond),
             then: Box::new(then),
+            els: Box::new(els),
         })
 }
 
@@ -80,9 +87,11 @@ fn if_stmt_non_terminal<'a>() -> Parser<'a, Token, Node> {
         .ignore_then(expr())
         .then_ignore(expect_symbol(")"))
         .then(stmt())
-        .map(|(cond, then)| Node::IfStmt {
+        .then((expect_keyword("else").ignore_then(stmt())).opt())
+        .map(|((cond, then), els)| Node::IfStmt {
             cond: Box::new(cond),
             then: Box::new(then),
+            els: Box::new(els),
         })
 }
 

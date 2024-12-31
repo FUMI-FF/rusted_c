@@ -73,6 +73,7 @@ pub fn allocate_register(ir_vec: Vec<IR>, env: &mut ProgramEnvironment) -> Vec<I
                 let reg = env.reg_alloc.allocate(*reg);
                 IR::UNLESS { reg, label: *label }
             }
+            IR::JMP(label) => IR::JMP(*label),
         })
         .collect()
 }

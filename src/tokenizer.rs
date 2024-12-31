@@ -1,4 +1,5 @@
 use crate::parser::{digit, ident, one_of, whitespace_wrap, ParseError, Parser};
+use std::collections::HashSet;
 use std::str;
 
 #[derive(Debug, PartialEq)]
@@ -23,11 +24,13 @@ fn ident_token<'a>() -> Parser<'a, u8, Token> {
 }
 
 fn keyword_token<'a>() -> Parser<'a, u8, Token> {
-    Parser::new(|input: &[u8]| {
+    let set = HashSet::from(["return".to_string(), "if".to_string(), "else".to_string()]);
+
+    Parser::new(move |input: &[u8]| {
         whitespace_wrap(ident())
             .parse(input)
             .and_then(|(rest, val)| {
-                if val == "return" || val == "if" {
+                if set.contains(&val) {
                     return Ok((rest, Token::Keyword(val)));
                 }
                 return Err(ParseError::new(

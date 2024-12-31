@@ -20,6 +20,12 @@ impl ProgramEnvironment<'_> {
             label_num: 0,
         }
     }
+
+    pub fn gen_label(&mut self) -> usize {
+        let label = self.label_num;
+        self.label_num += 1;
+        return label;
+    }
 }
 
 // code generator
@@ -95,6 +101,9 @@ pub fn gen_x86(ir_vec: Vec<IR>, env: &mut ProgramEnvironment) {
             let reg = env.reg_alloc.get_register(*reg);
             println!("  cmp {}, 0", reg);
             println!("  je .L{}", label);
+        }
+        IR::JMP(label) => {
+            println!("  jmp .L{}", label);
         }
         _ => {}
     });
