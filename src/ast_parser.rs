@@ -18,13 +18,37 @@ pub enum Node {
         then: Box<Node>,
         els: Box<Option<Node>>,
     },
+    Call {
+        ident: String,
+        args: Option<Vec<Node>>,
+    },
 }
 
+// BNF
+// compound_stmt := stmt (stmt)*
+// stmt := return_stmt | expr_stmt | if_stmt
+// atom_stmt := return_stmt | expr_stmt
+// return_stmt := "return" assign ";"
+// expr_stmt := assign ";"
+// if_stmt := if_stmt_atom | if_stmt_non_atom
+// if_stmt_atom := "if" "(" expr ")" atom_stmt "else" atom_stmt
+// if_stmt_non_atom := "if" "(" expr ")" stmt "else" stmt
+//
+// assign := expr ("=" expr ";")?
+// expr := mul (("+" | "-") mul)*
+// mul := term (("*" | "/") term)*
+// term := atom | non_atom
+// non_atom := "(" expr ")" | call
+// atom := number | ident
+// call := ident "(" call_args? ")"
+// call_args := expr ("," expr)*
+// number := [1-9][0-9]*
+// ident := [a-zA-Z][a-zA-Z0-9]*
 pub fn ast_parser<'a>() -> Parser<'a, Token, Node> {
     compound_stmt()
 }
 
-// compound_stmt := stmt{1,n}
+// compound_stmt := stmt (stmt)*
 fn compound_stmt<'a>() -> Parser<'a, Token, Node> {
     stmt().repeat1().map(|nodes| Node::CompoundStmt(nodes))
 }
@@ -34,29 +58,34 @@ fn stmt<'a>() -> Parser<'a, Token, Node> {
     return_stmt() | expr_stmt() | if_stmt()
 }
 
+// atom_stmt := return_stmt | expr_stmt
+fn atom_stmt<'a>() -> Parser<'a, Token, Node> {
+    return_stmt() | expr_stmt()
+}
+
 // return_stmt := "return" assign ";"
 fn return_stmt<'a>() -> Parser<'a, Token, Node> {
-    (expect_keyword("return") & assign() & expect_symbol(";"))
-        .map(|((_, node), _)| Node::Return(Box::new(node)))
+    keyword("return")
+        .ignore_then(assign())
+        .then_ignore(sym(";"))
+        .map(|node| Node::Return(Box::new(node)))
 }
 
 // expr_stmt := assign ";"
 fn expr_stmt<'a>() -> Parser<'a, Token, Node> {
-    (assign() & expect_symbol(";")).map(|(node, _)| Node::ExprStmt(Box::new(node)))
+    assign()
+        .then_ignore(sym(";"))
+        .map(|node| Node::ExprStmt(Box::new(node)))
 }
 
-fn terminal_stmt<'a>() -> Parser<'a, Token, Node> {
-    return_stmt() | expr_stmt()
-}
-
-// if_stmt := if_stmt_terminal | if_stmt_non_terminal
+// if_stmt := if_stmt_atom | if_stmt_non_atom
 fn if_stmt<'a>() -> Parser<'a, Token, Node> {
     Parser::new(|input| {
-        if let Ok(val) = if_stmt_terminal().parse(input) {
+        if let Ok(val) = if_stmt_atom().parse(input) {
             return Ok(val);
         }
         if matches!(input.get(0), Some(Token::Keyword(val)) if val == "if") {
-            return if_stmt_non_terminal().parse(input);
+            return if_stmt_non_atom().parse(input);
         }
         Err(ParseError::new(
             "Expected valid if-statement.".to_string(),
@@ -65,14 +94,14 @@ fn if_stmt<'a>() -> Parser<'a, Token, Node> {
     })
 }
 
-// if_stmt_terminal := "if" "(" expr ")" return_stmt | expr_stmt
-fn if_stmt_terminal<'a>() -> Parser<'a, Token, Node> {
-    expect_keyword("if")
-        .ignore_then(expect_symbol("("))
+// if_stmt_atom := "if" "(" expr ")" atom_stmt "else" atom_stmt
+fn if_stmt_atom<'a>() -> Parser<'a, Token, Node> {
+    keyword("if")
+        .ignore_then(keyword("("))
         .ignore_then(expr())
-        .then_ignore(expect_symbol(")"))
-        .then(terminal_stmt())
-        .then((expect_keyword("else").ignore_then(terminal_stmt())).opt())
+        .then_ignore(keyword(")"))
+        .then(atom_stmt())
+        .then((keyword("else").ignore_then(atom_stmt())).opt())
         .map(|((cond, then), els)| Node::IfStmt {
             cond: Box::new(cond),
             then: Box::new(then),
@@ -80,14 +109,14 @@ fn if_stmt_terminal<'a>() -> Parser<'a, Token, Node> {
         })
 }
 
-// if_stmt_non_terminal := "if" "(" expr ")" stmt
-fn if_stmt_non_terminal<'a>() -> Parser<'a, Token, Node> {
-    expect_keyword("if")
-        .ignore_then(expect_symbol("("))
+// if_stmt_non_atom := "if" "(" expr ")" stmt "else" stmt
+fn if_stmt_non_atom<'a>() -> Parser<'a, Token, Node> {
+    keyword("if")
+        .ignore_then(sym("("))
         .ignore_then(expr())
-        .then_ignore(expect_symbol(")"))
+        .then_ignore(sym(")"))
         .then(stmt())
-        .then((expect_keyword("else").ignore_then(stmt())).opt())
+        .then((keyword("else").ignore_then(stmt())).opt())
         .map(|((cond, then), els)| Node::IfStmt {
             cond: Box::new(cond),
             then: Box::new(then),
@@ -95,42 +124,26 @@ fn if_stmt_non_terminal<'a>() -> Parser<'a, Token, Node> {
         })
 }
 
-fn expect_symbol<'a>(expected: &str) -> Parser<'a, Token, ()> {
-    expect(Token::Symbol(expected.to_string()))
-}
-
-fn expect_keyword<'a>(expected: &str) -> Parser<'a, Token, ()> {
-    expect(Token::Keyword(expected.to_string()))
-}
-
-fn expect<'a>(expected: Token) -> Parser<'a, Token, ()> {
-    Parser::new(move |tokens: &[Token]| match tokens.get(0) {
-        Some(tk) if *tk == expected => Ok((&tokens[1..], ())),
-        Some(tk) => Err(ParseError::new(
-            format!("{:?} is expected, but got {:?}", expected, tk),
-            tokens,
-        )),
-        None => Err(ParseError::new(
-            format!("{:?} is expected but got nothing", expected),
-            tokens,
-        )),
-    })
-}
-
-// assign := expr | expr "=" expr ;
+// assign := expr ("=" expr ";")?
 fn assign<'a>() -> Parser<'a, Token, Node> {
-    (expr() & symbol(vec!["=".to_string()]) & expr()).map(|((lhs, op), rhs)| Node::Binary {
-        op,
-        lhs: Box::new(lhs),
-        rhs: Box::new(rhs),
-    }) | expr()
+    let assignment = expr()
+        .then(sym("="))
+        .then(expr())
+        .map(|((lhs, op), rhs)| Node::Binary {
+            op,
+            lhs: Box::new(lhs),
+            rhs: Box::new(rhs),
+        });
+
+    assignment | expr()
 }
 
-// expr := mul ((+|-) mul)
+// expr := mul (("+" | "-") mul)*
 fn expr<'a>() -> Parser<'a, Token, Node> {
-    (mul() & (symbol(vec!["+".to_string(), "-".to_string()]) & mul()).repeat0()).map(
-        |(mut lhs, op_and_nums)| {
-            for (op, rhs) in op_and_nums {
+    mul()
+        .then(one_of_syms(vec!["+", "-"]).then(mul()).repeat0())
+        .map(|(mut lhs, op_and_rhs)| {
+            for (op, rhs) in op_and_rhs {
                 lhs = Node::Binary {
                     op,
                     lhs: Box::new(lhs),
@@ -138,15 +151,15 @@ fn expr<'a>() -> Parser<'a, Token, Node> {
                 }
             }
             lhs
-        },
-    )
+        })
 }
 
-// mul := term ((*|/) term)*
+// mul := term (("*" | "/") term)*
 fn mul<'a>() -> Parser<'a, Token, Node> {
-    (term() & (symbol(vec!["*".to_string(), "/".to_string()]) & term()).repeat0()).map(
-        |(mut lhs, op_and_nums)| {
-            for (op, rhs) in op_and_nums {
+    term()
+        .then(one_of_syms(vec!["*", "/"]).then(term()).repeat0())
+        .map(|(mut lhs, op_and_rhs)| {
+            for (op, rhs) in op_and_rhs {
                 lhs = Node::Binary {
                     op,
                     lhs: Box::new(lhs),
@@ -154,21 +167,28 @@ fn mul<'a>() -> Parser<'a, Token, Node> {
                 }
             }
             lhs
-        },
-    )
+        })
 }
 
-// term := number | ident | "(" assign ")"
+// term := atom | non_atom
 fn term<'a>() -> Parser<'a, Token, Node> {
-    let paren = Parser::new(move |tokens: &[Token]| match tokens.get(0) {
-        Some(Token::Symbol(sym)) if sym == "(" => {
-            let parser = assign() & expect_symbol(")");
-            return parser.map(|(node, _)| node).parse(&tokens[1..]);
-        }
-        _ => Err(ParseError::new("( is expected".to_string(), tokens)),
-    });
+    atom() | non_atom()
+}
 
-    paren | number() | ident()
+// atom := number | ident
+fn atom<'a>() -> Parser<'a, Token, Node> {
+    number() | ident()
+}
+
+// non_atom := "(" expr ")"
+fn non_atom<'a>() -> Parser<'a, Token, Node> {
+    Parser::new(|input| {
+        let ret = sym("(").parse(input);
+        if let Err(err) = ret {
+            return Err(err);
+        }
+        expr().then_ignore(sym(")")).parse(ret.unwrap().0)
+    })
 }
 
 // number := [1-9][0-9]*
@@ -186,10 +206,32 @@ fn number<'a>() -> Parser<'a, Token, Node> {
     })
 }
 
-fn symbol<'a>(set: Vec<String>) -> Parser<'a, Token, String> {
+fn sym<'a>(expected: &'a str) -> Parser<'a, Token, String> {
     Parser::new(move |tokens: &[Token]| match tokens.get(0) {
-        Some(Token::Symbol(op)) if set.contains(op) => Ok((&tokens[1..], op.to_owned())),
-        _ => Err(ParseError::new(format!("{:?} is expected", set), tokens)),
+        Some(Token::Symbol(op)) if op == expected => Ok((&tokens[1..], op.to_owned())),
+        _ => Err(ParseError::new(
+            format!("{:?} is expected", expected),
+            tokens,
+        )),
+    })
+}
+
+fn one_of_syms<'a>(syms: Vec<&'a str>) -> Parser<'a, Token, String> {
+    Parser::new(move |tokens: &[Token]| match tokens.get(0) {
+        Some(Token::Symbol(op)) if syms.iter().any(|&s| s == op.as_str()) => {
+            Ok((&tokens[1..], op.to_owned()))
+        }
+        _ => Err(ParseError::new(format!("{:?} is expected", syms), tokens)),
+    })
+}
+
+fn keyword<'a>(expected: &'a str) -> Parser<'a, Token, String> {
+    Parser::new(move |tokens: &[Token]| match tokens.get(0) {
+        Some(Token::Keyword(op)) if op == expected => Ok((&tokens[1..], op.to_owned())),
+        _ => Err(ParseError::new(
+            format!("{:?} is expected", expected),
+            tokens,
+        )),
     })
 }
 

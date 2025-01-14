@@ -24,11 +24,13 @@ pub type ParseFn<'a, I, O> = dyn Fn(&'a [I]) -> ParseResult<'a, I, O> + 'a;
 
 pub struct Parser<'a, I, O> {
     parser: Box<ParseFn<'a, I, O>>,
+    debug: bool,
 }
 
 impl<'a, I, O: 'a> Parser<'a, I, O>
 where
-    I: std::fmt::Debug,
+    I: Debug,
+    O: Debug,
 {
     pub fn new<P>(parser: P) -> Self
     where
@@ -37,11 +39,19 @@ where
     {
         Self {
             parser: Box::new(parser),
+            debug: false,
         }
     }
 
     pub fn parse(&self, input: &'a [I]) -> ParseResult<'a, I, O> {
-        (self.parser)(input)
+        if self.debug {
+            eprintln!("input={:?}", input);
+            let ret = (self.parser)(input);
+            eprintln!("ret={:?}", ret);
+            ret
+        } else {
+            (self.parser)(input)
+        }
     }
 
     pub fn repeat0(self) -> Parser<'a, I, Vec<O>> {
@@ -80,7 +90,7 @@ where
     pub fn map<U, F>(self, f: F) -> Parser<'a, I, U>
     where
         F: Fn(O) -> U + 'a,
-        U: 'a,
+        U: Debug + 'a,
     {
         Parser::new(move |input: &[I]| self.parse(input).map(|(next, ret)| (next, f(ret))))
     }
@@ -97,9 +107,10 @@ where
 
     pub fn then<B>(self, other: Parser<'a, I, B>) -> Parser<'a, I, (O, B)>
     where
-        B: 'a,
+        B: Debug + 'a,
     {
         Parser::new(move |input: &[I]| match self.parse(input) {
+            // ensure token is cosumed
             Ok((next, ret1)) => match other.parse(next) {
                 Ok((_final, ret2)) => Ok((_final, (ret1, ret2))),
                 Err(err) => Err(err),
@@ -117,14 +128,14 @@ where
 
     pub fn then_ignore<B>(self, other: Parser<'a, I, B>) -> Parser<'a, I, O>
     where
-        B: 'a,
+        B: Debug + 'a,
     {
         (self & other).map(|(ret, _)| ret)
     }
 
     pub fn ignore_then<B>(self, other: Parser<'a, I, B>) -> Parser<'a, I, B>
     where
-        B: 'a,
+        B: Debug + 'a,
     {
         (self & other).map(|(_, ret)| ret)
     }
@@ -139,7 +150,9 @@ where
 
 impl<'a, I, A: 'a, B: 'a> BitAnd<Parser<'a, I, B>> for Parser<'a, I, A>
 where
-    I: std::fmt::Debug,
+    I: Debug,
+    A: Debug,
+    B: Debug,
 {
     type Output = Parser<'a, I, (A, B)>;
 
@@ -151,7 +164,8 @@ where
 
 impl<'a, I, A: 'a> BitOr<Parser<'a, I, A>> for Parser<'a, I, A>
 where
-    I: std::fmt::Debug,
+    I: Debug,
+    A: Debug,
 {
     type Output = Parser<'a, I, A>;
 
@@ -211,7 +225,7 @@ pub fn whitespaces<'a>() -> Parser<'a, u8, Vec<u8>> {
     any_char().is_a(|ch| ch.is_ascii_whitespace()).repeat0()
 }
 
-pub fn whitespace_wrap<'a, O: 'a>(p: Parser<'a, u8, O>) -> Parser<'a, u8, O> {
+pub fn whitespace_wrap<'a, O: Debug + 'a>(p: Parser<'a, u8, O>) -> Parser<'a, u8, O> {
     (whitespaces() & p & whitespaces()).map(|((_, x), _)| x)
 }
 

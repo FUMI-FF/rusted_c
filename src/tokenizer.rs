@@ -15,7 +15,7 @@ fn digit_token<'a>() -> Parser<'a, u8, Token> {
 }
 
 fn symbol_token<'a>() -> Parser<'a, u8, Token> {
-    whitespace_wrap(one_of(b"+-*/;=()"))
+    whitespace_wrap(one_of(b"+-*/;=(),"))
         .map(|op| Token::Symbol(str::from_utf8(&[op]).unwrap().to_string()))
 }
 
