@@ -28,10 +28,7 @@ pub enum Node {
 // compound_stmt := stmt (stmt)*
 // stmt := return_stmt | expr_stmt | if_stmt atom_stmt := return_stmt | expr_stmt return_stmt := "return" assign ";"
 // expr_stmt := assign ";"
-// if_stmt := if_stmt_atom | if_stmt_non_atom
-// if_stmt_atom := "if" "(" expr ")" atom_stmt "else" atom_stmt
-// if_stmt_non_atom := "if" "(" expr ")" stmt "else" stmt
-//
+// if_stmt := "if" "(" expr ")" stmt ("else" stmt)?
 // assign := expr ("=" expr ";")?
 // expr := mul (("+" | "-") mul)*
 // mul := term (("*" | "/") term)*
@@ -57,116 +54,88 @@ fn stmt<'a>() -> Parser<'a, Token, Node> {
     return_stmt() | expr_stmt() | if_stmt()
 }
 
-// atom_stmt := return_stmt | expr_stmt
-fn atom_stmt<'a>() -> Parser<'a, Token, Node> {
-    return_stmt() | expr_stmt()
-}
-
 // return_stmt := "return" assign ";"
 fn return_stmt<'a>() -> Parser<'a, Token, Node> {
-    keyword("return")
-        .ignore_then(assign())
-        .then_ignore(sym(";"))
-        .map(|node| Node::Return(Box::new(node)))
+    Parser::new(|input| {
+        let (next, _) = keyword("return").parse(input)?;
+        let (next, _assign) = assign().parse(next)?;
+        let (next, _) = sym(";").parse(next)?;
+        Ok((next, Node::Return(Box::new(_assign))))
+    })
 }
 
 // expr_stmt := assign ";"
 fn expr_stmt<'a>() -> Parser<'a, Token, Node> {
-    assign()
-        .then_ignore(sym(";"))
-        .map(|node| Node::ExprStmt(Box::new(node)))
+    Parser::new(|input| {
+        let (next, _assign) = assign().parse(input)?;
+        let (next, _) = sym(";").parse(next)?;
+        Ok((next, Node::ExprStmt(Box::new(_assign))))
+    })
 }
 
-// if_stmt := if_stmt_atom | if_stmt_non_atom
+// if_stmt :=
 fn if_stmt<'a>() -> Parser<'a, Token, Node> {
     Parser::new(|input| {
-        if let Ok(val) = if_stmt_atom().parse(input) {
-            return Ok(val);
-        }
-        if matches!(input.get(0), Some(Token::Keyword(val)) if val == "if") {
-            return if_stmt_non_atom().parse(input);
-        }
-        Err(ParseError::new(
-            "Expected valid if-statement.".to_string(),
-            input,
+        let (next, _) = keyword("if").parse(input)?;
+        let (next, _) = sym("(").parse(next)?;
+        let (next, cond) = expr().parse(next)?;
+        let (next, _) = sym(")").parse(next)?;
+        let (next, then) = stmt().parse(next)?;
+        let (next, _else) = keyword("else").ignore_then(stmt()).opt().parse(next)?;
+        Ok((
+            next,
+            Node::IfStmt {
+                cond: Box::new(cond),
+                then: Box::new(then),
+                els: Box::new(_else),
+            },
         ))
     })
 }
 
-// if_stmt_atom := "if" "(" expr ")" atom_stmt "else" atom_stmt
-fn if_stmt_atom<'a>() -> Parser<'a, Token, Node> {
-    keyword("if")
-        .ignore_then(keyword("("))
-        .ignore_then(expr())
-        .then_ignore(keyword(")"))
-        .then(atom_stmt())
-        .then((keyword("else").ignore_then(atom_stmt())).opt())
-        .map(|((cond, then), els)| Node::IfStmt {
-            cond: Box::new(cond),
-            then: Box::new(then),
-            els: Box::new(els),
-        })
-}
-
-// if_stmt_non_atom := "if" "(" expr ")" stmt "else" stmt
-fn if_stmt_non_atom<'a>() -> Parser<'a, Token, Node> {
-    keyword("if")
-        .ignore_then(sym("("))
-        .ignore_then(expr())
-        .then_ignore(sym(")"))
-        .then(stmt())
-        .then((keyword("else").ignore_then(stmt())).opt())
-        .map(|((cond, then), els)| Node::IfStmt {
-            cond: Box::new(cond),
-            then: Box::new(then),
-            els: Box::new(els),
-        })
-}
-
-// assign := expr ("=" expr ";")?
+// assign := expr ("=" expr)?
 fn assign<'a>() -> Parser<'a, Token, Node> {
-    let assignment = expr()
-        .then(sym("="))
-        .then(expr())
-        .map(|((lhs, op), rhs)| Node::Binary {
-            op,
-            lhs: Box::new(lhs),
-            rhs: Box::new(rhs),
-        });
+    let _assign = Parser::new(|input| {
+        let (next, lhs) = expr().parse(input)?;
+        let (next, op) = sym("=").parse(next)?;
+        let (next, rhs) = expr().parse(next)?;
+        Ok((
+            next,
+            Node::Binary {
+                op,
+                lhs: Box::new(lhs),
+                rhs: Box::new(rhs),
+            },
+        ))
+    });
 
-    assignment | expr()
+    _assign | expr()
 }
 
 // expr := mul (("+" | "-") mul)*
 fn expr<'a>() -> Parser<'a, Token, Node> {
-    mul()
-        .then(one_of_syms(vec!["+", "-"]).then(mul()).repeat0())
-        .map(|(mut lhs, op_and_rhs)| {
-            for (op, rhs) in op_and_rhs {
-                lhs = Node::Binary {
-                    op,
-                    lhs: Box::new(lhs),
-                    rhs: Box::new(rhs),
-                }
-            }
-            lhs
-        })
+    Parser::new(|input| {
+        let (next, fst) = mul().parse(input)?;
+        let (next, rest) = one_of_syms(vec!["+", "-"])
+            .then(mul())
+            .repeat0()
+            .parse(next)?;
+        let node = fold_nodes(fst, rest);
+        Ok((next, node))
+    })
 }
 
 // mul := term (("*" | "/") term)*
 fn mul<'a>() -> Parser<'a, Token, Node> {
-    term()
-        .then(one_of_syms(vec!["*", "/"]).then(term()).repeat0())
-        .map(|(mut lhs, op_and_rhs)| {
-            for (op, rhs) in op_and_rhs {
-                lhs = Node::Binary {
-                    op,
-                    lhs: Box::new(lhs),
-                    rhs: Box::new(rhs),
-                }
-            }
-            lhs
-        })
+    Parser::new(|input| {
+        let (next, fst) = term().parse(input)?;
+        let (next, rest) = one_of_syms(vec!["*", "/"])
+            .then(term())
+            .repeat0()
+            .parse(next)?;
+        let node = fold_nodes(fst, rest);
+        Ok((next, node))
+    })
 }
 
 // term := atom | non_atom
@@ -280,6 +249,14 @@ fn keyword<'a>(expected: &'a str) -> Parser<'a, Token, String> {
             format!("{:?} is expected", expected),
             tokens,
         )),
+    })
+}
+
+fn fold_nodes(fst: Node, rest: Vec<(String, Node)>) -> Node {
+    rest.into_iter().fold(fst, |fst, (op, node)| Node::Binary {
+        op,
+        lhs: Box::new(fst),
+        rhs: Box::new(node),
     })
 }
 

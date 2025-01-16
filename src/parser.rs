@@ -24,7 +24,6 @@ pub type ParseFn<'a, I, O> = dyn Fn(&'a [I]) -> ParseResult<'a, I, O> + 'a;
 
 pub struct Parser<'a, I, O> {
     parser: Box<ParseFn<'a, I, O>>,
-    debug: bool,
 }
 
 impl<'a, I, O: 'a> Parser<'a, I, O>
@@ -39,19 +38,11 @@ where
     {
         Self {
             parser: Box::new(parser),
-            debug: false,
         }
     }
 
     pub fn parse(&self, input: &'a [I]) -> ParseResult<'a, I, O> {
-        if self.debug {
-            eprintln!("input={:?}", input);
-            let ret = (self.parser)(input);
-            eprintln!("ret={:?}", ret);
-            ret
-        } else {
-            (self.parser)(input)
-        }
+        (self.parser)(input)
     }
 
     pub fn repeat0(self) -> Parser<'a, I, Vec<O>> {
