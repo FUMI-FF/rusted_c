@@ -9,7 +9,7 @@ pub enum Node {
         lhs: Box<Node>,
         rhs: Box<Node>,
     },
-    Ident(String),
+    Variable(String),
     Return(Box<Node>),
     CompoundStmt(Vec<Node>),
     ExprStmt(Box<Node>),
@@ -19,16 +19,14 @@ pub enum Node {
         els: Box<Option<Node>>,
     },
     Call {
-        ident: String,
+        name: String,
         args: Option<Vec<Node>>,
     },
 }
 
 // BNF
 // compound_stmt := stmt (stmt)*
-// stmt := return_stmt | expr_stmt | if_stmt
-// atom_stmt := return_stmt | expr_stmt
-// return_stmt := "return" assign ";"
+// stmt := return_stmt | expr_stmt | if_stmt atom_stmt := return_stmt | expr_stmt return_stmt := "return" assign ";"
 // expr_stmt := assign ";"
 // if_stmt := if_stmt_atom | if_stmt_non_atom
 // if_stmt_atom := "if" "(" expr ")" atom_stmt "else" atom_stmt
@@ -39,11 +37,12 @@ pub enum Node {
 // mul := term (("*" | "/") term)*
 // term := atom | non_atom
 // non_atom := "(" expr ")" | call
-// atom := number | ident
+// atom := number | variable
 // call := ident "(" call_args? ")"
 // call_args := expr ("," expr)*
 // number := [1-9][0-9]*
 // ident := [a-zA-Z][a-zA-Z0-9]*
+
 pub fn ast_parser<'a>() -> Parser<'a, Token, Node> {
     compound_stmt()
 }
@@ -177,17 +176,38 @@ fn term<'a>() -> Parser<'a, Token, Node> {
 
 // atom := number | ident
 fn atom<'a>() -> Parser<'a, Token, Node> {
-    number() | ident()
+    number() | variable()
 }
 
-// non_atom := "(" expr ")"
+// non_atom := "(" expr ")" | call
 fn non_atom<'a>() -> Parser<'a, Token, Node> {
+    let paren = Parser::new(|input| {
+        let (next, _) = sym("(").parse(input)?;
+        let (next, node) = expr().parse(next)?;
+        let (next, _) = sym(")").parse(next)?;
+        Ok((next, node))
+    });
+    paren | call()
+}
+
+// call := ident "(" call_args? ")"
+fn call<'a>() -> Parser<'a, Token, Node> {
     Parser::new(|input| {
-        let ret = sym("(").parse(input);
-        if let Err(err) = ret {
-            return Err(err);
-        }
-        expr().then_ignore(sym(")")).parse(ret.unwrap().0)
+        let (next, name) = ident().parse(input)?;
+        let (next, _) = sym("(").parse(next)?;
+        let (next, args) = call_args().opt().parse(next)?;
+        let (next, _) = sym(")").parse(next)?;
+        Ok((next, Node::Call { name, args }))
+    })
+}
+
+// call_args := expr ("," expr)*
+fn call_args<'a>() -> Parser<'a, Token, Vec<Node>> {
+    Parser::new(|input| {
+        let (next, fst) = expr().parse(input)?;
+        let (next, mut rest) = sym(",").ignore_then(expr()).repeat0().parse(next)?;
+        rest.insert(0, fst);
+        Ok((next, rest))
     })
 }
 
@@ -201,6 +221,34 @@ fn number<'a>() -> Parser<'a, Token, Node> {
         )),
         None => Err(ParseError::new(
             "number is expected but got nothing".to_string(),
+            tokens,
+        )),
+    })
+}
+
+fn variable<'a>() -> Parser<'a, Token, Node> {
+    Parser::new(|input| {
+        let (next, name) = ident().parse(input)?;
+        match next.get(0) {
+            Some(Token::Symbol(sym)) if sym == "(" => Err(ParseError::new(
+                "variable should not end with paren".to_string(),
+                next,
+            )),
+            _ => Ok((next, Node::Variable(name))),
+        }
+    })
+}
+
+// ident := [a-zA-Z][a-zA-Z0-9]*
+fn ident<'a>() -> Parser<'a, Token, String> {
+    Parser::new(|tokens: &[Token]| match tokens.get(0) {
+        Some(Token::Ident(id)) => Ok((&tokens[1..], id.to_string())),
+        Some(token) => Err(ParseError::new(
+            format!("ident is expected but got {:?}", token),
+            tokens,
+        )),
+        None => Err(ParseError::new(
+            "ident is expected but got nothing".to_string(),
             tokens,
         )),
     })
@@ -235,20 +283,6 @@ fn keyword<'a>(expected: &'a str) -> Parser<'a, Token, String> {
     })
 }
 
-fn ident<'a>() -> Parser<'a, Token, Node> {
-    Parser::new(|tokens: &[Token]| match tokens.get(0) {
-        Some(Token::Ident(id)) => Ok((&tokens[1..], Node::Ident(id.to_string()))),
-        Some(token) => Err(ParseError::new(
-            format!("ident is expected but got {:?}", token),
-            tokens,
-        )),
-        None => Err(ParseError::new(
-            "ident is expected but got nothing".to_string(),
-            tokens,
-        )),
-    })
-}
-
 #[test]
 fn test_number() {
     let number = number();
@@ -262,6 +296,66 @@ fn test_ident() {
     let empty: &[Token] = &[];
     assert_eq!(
         ident.parse(&[Token::Ident("a".to_string())]),
-        Ok((empty, Node::Ident("a".to_string())))
+        Ok((empty, "a".to_string()))
+    )
+}
+
+#[test]
+fn test_non_atom() {
+    let parser = non_atom();
+    let empty: &[Token] = &[];
+    assert_eq!(
+        parser.parse(&[
+            Token::Symbol("(".to_string()),
+            Token::Ident("a".to_string()),
+            Token::Symbol("+".to_string()),
+            Token::Int(1),
+            Token::Symbol(")".to_string()),
+        ]),
+        Ok((
+            empty,
+            Node::Binary {
+                op: "+".to_string(),
+                lhs: Box::new(Node::Variable("a".to_string())),
+                rhs: Box::new(Node::Int(1))
+            }
+        ))
+    )
+}
+
+#[test]
+fn test_call_args() {
+    let parser = call_args();
+    let empty: &[Token] = &[];
+    assert_eq!(
+        parser.parse(&[
+            Token::Ident("x".to_string()),
+            Token::Symbol(",".to_string()),
+            Token::Int(1),
+        ]),
+        Ok((empty, vec![Node::Variable("x".to_string()), Node::Int(1)]))
+    )
+}
+
+#[test]
+fn test_call() {
+    let parser = call();
+    let empty: &[Token] = &[];
+    assert_eq!(
+        parser.parse(&[
+            Token::Ident("add".to_string()),
+            Token::Symbol("(".to_string()),
+            Token::Int(1),
+            Token::Symbol(",".to_string()),
+            Token::Int(2),
+            Token::Symbol(")".to_string()),
+        ]),
+        Ok((
+            empty,
+            Node::Call {
+                name: "add".to_string(),
+                args: Some(vec![Node::Int(1), Node::Int(2)])
+            }
+        ))
     )
 }

@@ -87,7 +87,7 @@ fn gen_expr(node: &Node, env: &mut ProgramEnvironment) -> (RegNo, Vec<IR>) {
         let reg = env.reg_alloc.issue_regno();
         return (reg, vec![IR::IMM { reg, val: *val }]);
     }
-    if let Node::Ident(_) = node {
+    if let Node::Variable(_) = node {
         let (reg, mut vec) = gen_lval(node, env);
         vec.push(IR::LOAD { reg, addr: reg });
         return (reg, vec);
@@ -140,7 +140,7 @@ fn gen_expr(node: &Node, env: &mut ProgramEnvironment) -> (RegNo, Vec<IR>) {
 
 fn gen_lval(node: &Node, env: &mut ProgramEnvironment) -> (RegNo, Vec<IR>) {
     let name = match node {
-        Node::Ident(name) => name,
+        Node::Variable(name) => name,
         _ => panic!("node must be ident but got {:?}", node),
     };
     if !env.vars.contains_key(name) {

@@ -109,13 +109,10 @@ where
     where
         B: Debug + 'a,
     {
-        Parser::new(move |input: &[I]| match self.parse(input) {
-            // ensure token is cosumed
-            Ok((next, ret1)) => match other.parse(next) {
-                Ok((_final, ret2)) => Ok((_final, (ret1, ret2))),
-                Err(err) => Err(err),
-            },
-            Err(err) => Err(err),
+        Parser::new(move |input: &[I]| {
+            let (next, fst) = self.parse(input)?;
+            let (next, snd) = other.parse(next)?;
+            Ok((next, (fst, snd)))
         })
     }
 
